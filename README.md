@@ -4,7 +4,7 @@ RiposteOS est le système open source et self-hosted pour industrialiser la
 réponse aux appels d'offres : sourcing, qualification, RAG, génération
 documentaire et conformité.
 
-Le dépôt contient actuellement le socle technique, sans fonctionnalité métier.
+Le dépôt contient le socle technique et une première tranche de sourcing BOAMP.
 
 ## Démarrage
 
@@ -30,6 +30,13 @@ make dev-ai
 ```
 
 Son interface est alors disponible sur <http://localhost:5001>.
+
+## Sourcing BOAMP
+
+La page <http://localhost:5173/opportunities> permet d'importer les avis BOAMP
+correspondant aux mots-clés Aktislab. Un second import met à jour les avis déjà
+connus sans créer de doublon. Les mots-clés, exclusions et la limite d'import
+se règlent depuis <http://localhost:5173/settings>.
 
 ## Commandes utiles
 

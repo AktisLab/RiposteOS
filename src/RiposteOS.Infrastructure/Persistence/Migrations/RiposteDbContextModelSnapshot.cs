@@ -17,6 +17,7 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
+                .HasDefaultSchema("identity")
                 .HasAnnotation("ProductVersion", "10.0.10")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
@@ -27,7 +28,8 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
 
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
@@ -47,7 +49,7 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("RoleNameIndex");
 
-                    b.ToTable("AspNetRoles", (string)null);
+                    b.ToTable("AspNetRoles", "identity");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
@@ -71,14 +73,15 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("RoleId");
 
-                    b.ToTable("AspNetRoleClaims", (string)null);
+                    b.ToTable("AspNetRoleClaims", "identity");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUser<System.Guid>", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
 
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("integer");
@@ -136,7 +139,7 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
 
-                    b.ToTable("AspNetUsers", (string)null);
+                    b.ToTable("AspNetUsers", "identity");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<System.Guid>", b =>
@@ -160,7 +163,7 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("AspNetUserClaims", (string)null);
+                    b.ToTable("AspNetUserClaims", "identity");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<System.Guid>", b =>
@@ -181,7 +184,7 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("AspNetUserLogins", (string)null);
+                    b.ToTable("AspNetUserLogins", "identity");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<System.Guid>", b =>
@@ -196,7 +199,7 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("RoleId");
 
-                    b.ToTable("AspNetUserRoles", (string)null);
+                    b.ToTable("AspNetUserRoles", "identity");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<System.Guid>", b =>
@@ -215,7 +218,274 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
 
                     b.HasKey("UserId", "LoginProvider", "Name");
 
-                    b.ToTable("AspNetUserTokens", (string)null);
+                    b.ToTable("AspNetUserTokens", "identity");
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Sourcing.ImportRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<int>("Created")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly?>("CurrentPublicationDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("Fetched")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("LastHeartbeatAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateTimeOffset>("QueuedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int>("Skipped")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("Updated")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("QueuedAt")
+                        .HasDatabaseName("ix_import_runs_queued_at");
+
+                    b.HasIndex("Source")
+                        .IsUnique()
+                        .HasDatabaseName("ix_import_runs_active_source")
+                        .HasFilter("\"Status\" IN ('Queued', 'Running')");
+
+                    b.ToTable("import_runs", "sourcing");
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Sourcing.Opportunity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Buyer")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset>("ImportedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int>("MatchScore")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NoticeUrl")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateOnly>("PublicationDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("RawPayload")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset?>("ResponseDeadline")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.PrimitiveCollection<string[]>("_cpvCodes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("CpvCodes");
+
+                    b.PrimitiveCollection<string[]>("_departmentCodes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("DepartmentCodes");
+
+                    b.PrimitiveCollection<string[]>("_descriptorCodes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("DescriptorCodes");
+
+                    b.PrimitiveCollection<string[]>("_descriptorLabels")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("DescriptorLabels");
+
+                    b.PrimitiveCollection<string[]>("_matchReasons")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("MatchReasons");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MatchScore")
+                        .HasDatabaseName("ix_opportunities_match_score");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_opportunities_status");
+
+                    b.HasIndex("Source", "SourceId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_opportunities_source_source_id");
+
+                    b.ToTable("opportunities", "sourcing");
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Sourcing.SourcingSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CpvExclusionPenalty")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CpvWatchBoost")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CpvWhitelistBoost")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("HighRelevanceThreshold")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("NegativeSignalPenalty")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PageSize")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PositiveSignalWeight")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PreferredDepartmentBoost")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int>("UrgentDeadlineDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UrgentDeadlinePenalty")
+                        .HasColumnType("integer");
+
+                    b.PrimitiveCollection<string[]>("_cpvExcludedPrefixes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("CpvExcludedPrefixes");
+
+                    b.PrimitiveCollection<string[]>("_cpvWatchPrefixes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("CpvWatchPrefixes");
+
+                    b.PrimitiveCollection<string[]>("_cpvWhitelistPrefixes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("CpvWhitelistPrefixes");
+
+                    b.PrimitiveCollection<string[]>("_excludedKeywords")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("ExcludedKeywords");
+
+                    b.PrimitiveCollection<string[]>("_keywords")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("Keywords");
+
+                    b.PrimitiveCollection<string[]>("_negativeSignals")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("NegativeSignals");
+
+                    b.PrimitiveCollection<string[]>("_positiveSignals")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("PositiveSignals");
+
+                    b.PrimitiveCollection<string[]>("_preferredDepartmentCodes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("PreferredDepartmentCodes");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("sourcing_settings", "sourcing");
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Sourcing.SourcingSyncState", b =>
+                {
+                    b.Property<string>("Source")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateOnly?>("LastSuccessfulPublicationDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Source");
+
+                    b.ToTable("sourcing_sync_states", "sourcing");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>

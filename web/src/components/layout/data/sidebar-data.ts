@@ -22,7 +22,16 @@ export const sidebarData: SidebarData = {
     },
     {
       title: 'Configuration',
-      items: [{ title: 'Paramètres', url: '/settings', icon: Settings }],
+      items: [
+        {
+          title: 'Paramètres',
+          icon: Settings,
+          items: [
+            { title: "Vue d'ensemble", url: '/settings' },
+            { title: 'Sourcing', url: '/settings/sourcing' },
+          ],
+        },
+      ],
     },
   ],
 }

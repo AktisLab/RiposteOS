@@ -5,6 +5,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Update="Sourcing/BoampSource.Contracts.cs">
+      <DependentUpon>BoampSource.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Sourcing/BoampSource.Mapping.cs">
+      <DependentUpon>BoampSource.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Sourcing/SourcingFacade.Contracts.cs">
+      <DependentUpon>SourcingFacade.cs</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Gridify.EntityFramework" />
     <PackageReference Include="Hangfire.AspNetCore" />
     <PackageReference Include="Hangfire.Core" />
     <PackageReference Include="Hangfire.PostgreSql" />
@@ -14,6 +27,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
   </ItemGroup>
 

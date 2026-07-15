@@ -21,6 +21,8 @@ import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors404RouteImport } from './routes/(errors)/404'
 import { Route as errors403RouteImport } from './routes/(errors)/403'
 import { Route as errors401RouteImport } from './routes/(errors)/401'
+import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings.index'
+import { Route as AuthenticatedSettingsSourcingRouteImport } from './routes/_authenticated/settings.sourcing'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -83,6 +85,18 @@ const errors401Route = errors401RouteImport.update({
   path: '/401',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedSettingsIndexRoute =
+  AuthenticatedSettingsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
+const AuthenticatedSettingsSourcingRoute =
+  AuthenticatedSettingsSourcingRouteImport.update({
+    id: '/sourcing',
+    path: '/sourcing',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -95,7 +109,9 @@ export interface FileRoutesByFullPath {
   '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/opportunities': typeof AuthenticatedOpportunitiesRoute
   '/responses': typeof AuthenticatedResponsesRoute
-  '/settings': typeof AuthenticatedSettingsRoute
+  '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/settings/sourcing': typeof AuthenticatedSettingsSourcingRoute
+  '/settings/': typeof AuthenticatedSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/401': typeof errors401Route
@@ -107,8 +123,9 @@ export interface FileRoutesByTo {
   '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/opportunities': typeof AuthenticatedOpportunitiesRoute
   '/responses': typeof AuthenticatedResponsesRoute
-  '/settings': typeof AuthenticatedSettingsRoute
   '/': typeof AuthenticatedIndexRoute
+  '/settings/sourcing': typeof AuthenticatedSettingsSourcingRoute
+  '/settings': typeof AuthenticatedSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -122,8 +139,10 @@ export interface FileRoutesById {
   '/_authenticated/knowledge': typeof AuthenticatedKnowledgeRoute
   '/_authenticated/opportunities': typeof AuthenticatedOpportunitiesRoute
   '/_authenticated/responses': typeof AuthenticatedResponsesRoute
-  '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/settings/sourcing': typeof AuthenticatedSettingsSourcingRoute
+  '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -139,6 +158,8 @@ export interface FileRouteTypes {
     | '/opportunities'
     | '/responses'
     | '/settings'
+    | '/settings/sourcing'
+    | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/401'
@@ -150,8 +171,9 @@ export interface FileRouteTypes {
     | '/knowledge'
     | '/opportunities'
     | '/responses'
-    | '/settings'
     | '/'
+    | '/settings/sourcing'
+    | '/settings'
   id:
     | '__root__'
     | '/_authenticated'
@@ -166,6 +188,8 @@ export interface FileRouteTypes {
     | '/_authenticated/responses'
     | '/_authenticated/settings'
     | '/_authenticated/'
+    | '/_authenticated/settings/sourcing'
+    | '/_authenticated/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -263,15 +287,44 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof errors401RouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/settings/': {
+      id: '/_authenticated/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AuthenticatedSettingsIndexRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
+    '/_authenticated/settings/sourcing': {
+      id: '/_authenticated/settings/sourcing'
+      path: '/sourcing'
+      fullPath: '/settings/sourcing'
+      preLoaderRoute: typeof AuthenticatedSettingsSourcingRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
   }
 }
+
+interface AuthenticatedSettingsRouteChildren {
+  AuthenticatedSettingsSourcingRoute: typeof AuthenticatedSettingsSourcingRoute
+  AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
+}
+
+const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
+  AuthenticatedSettingsSourcingRoute: AuthenticatedSettingsSourcingRoute,
+  AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
+}
+
+const AuthenticatedSettingsRouteWithChildren =
+  AuthenticatedSettingsRoute._addFileChildren(
+    AuthenticatedSettingsRouteChildren,
+  )
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedConsultationsRoute: typeof AuthenticatedConsultationsRoute
   AuthenticatedKnowledgeRoute: typeof AuthenticatedKnowledgeRoute
   AuthenticatedOpportunitiesRoute: typeof AuthenticatedOpportunitiesRoute
   AuthenticatedResponsesRoute: typeof AuthenticatedResponsesRoute
-  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
@@ -280,7 +333,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedKnowledgeRoute: AuthenticatedKnowledgeRoute,
   AuthenticatedOpportunitiesRoute: AuthenticatedOpportunitiesRoute,
   AuthenticatedResponsesRoute: AuthenticatedResponsesRoute,
-  AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 

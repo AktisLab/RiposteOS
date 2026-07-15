@@ -7,6 +7,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+    <PackageReference Include="Riok.Mapperly" PrivateAssets="all" />
     <PackageReference Include="Scalar.AspNetCore" />
   </ItemGroup>
 

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using RiposteOS.Api.Sourcing;
 using RiposteOS.Infrastructure;
 using RiposteOS.Infrastructure.Persistence;
 using Scalar.AspNetCore;
@@ -36,6 +37,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready"),
 });
+app.MapSourcingEndpoints();
 
 app.Run();
 

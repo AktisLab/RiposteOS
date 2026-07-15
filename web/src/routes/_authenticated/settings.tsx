@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { ModulePlaceholder } from '@/features/module-placeholder'
+import { SettingsLayout } from '@/features/settings/layout'
 
 export const Route = createFileRoute('/_authenticated/settings')({
-  component: () => <ModulePlaceholder title='Paramètres' />,
+  component: SettingsLayout,
 })

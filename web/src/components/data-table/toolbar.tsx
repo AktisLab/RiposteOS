@@ -18,20 +18,28 @@ type DataTableToolbarProps<TData> = {
       icon?: React.ComponentType<{ className?: string }>
     }[]
   }[]
+  children?: React.ReactNode
+  isExternallyFiltered?: boolean
+  onReset?: () => void
 }
 
 export function DataTableToolbar<TData>({
   table,
-  searchPlaceholder = 'Filter...',
+  searchPlaceholder = 'Filtrer…',
   searchKey,
   filters = [],
+  children,
+  isExternallyFiltered,
+  onReset,
 }: DataTableToolbarProps<TData>) {
   const isFiltered =
-    table.getState().columnFilters.length > 0 || table.getState().globalFilter
+    table.getState().columnFilters.length > 0 ||
+    table.getState().globalFilter ||
+    isExternallyFiltered
 
   return (
-    <div className='flex items-center justify-between'>
-      <div className='flex flex-1 flex-col-reverse items-start gap-y-2 sm:flex-row sm:items-center sm:space-x-2'>
+    <div className='flex flex-wrap items-center justify-between gap-2'>
+      <div className='flex w-full flex-1 flex-col-reverse items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center'>
         {searchKey ? (
           <Input
             placeholder={searchPlaceholder}
@@ -41,17 +49,17 @@ export function DataTableToolbar<TData>({
             onChange={(event) =>
               table.getColumn(searchKey)?.setFilterValue(event.target.value)
             }
-            className='h-8 w-37.5 lg:w-62.5'
+            className='h-8 w-full sm:w-64'
           />
         ) : (
           <Input
             placeholder={searchPlaceholder}
             value={table.getState().globalFilter ?? ''}
             onChange={(event) => table.setGlobalFilter(event.target.value)}
-            className='h-8 w-37.5 lg:w-62.5'
+            className='h-8 w-full sm:w-64'
           />
         )}
-        <div className='flex gap-x-2'>
+        <div className='flex flex-wrap gap-2'>
           {filters.map((filter) => {
             const column = table.getColumn(filter.columnId)
             if (!column) return null
@@ -64,17 +72,22 @@ export function DataTableToolbar<TData>({
               />
             )
           })}
+          {children}
         </div>
         {isFiltered && (
           <Button
             variant='ghost'
             onClick={() => {
-              table.resetColumnFilters()
-              table.setGlobalFilter('')
+              if (onReset) {
+                onReset()
+              } else {
+                table.resetColumnFilters()
+                table.setGlobalFilter('')
+              }
             }}
             className='h-8 px-2 lg:px-3'
           >
-            Reset
+            Réinitialiser
             <Cross2Icon className='ms-2 h-4 w-4' />
           </Button>
         )}
