@@ -1,0 +1,11 @@
+.DS_Store
+.env
+.idea/
+.vscode/
+**/bin/
+**/obj/
+artifacts/
+TestResults/
+web/dist/
+web/node_modules/
+web/.pnpm-store/
