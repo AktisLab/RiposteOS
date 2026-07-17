@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarClock } from 'lucide-react'
+import * as m from 'motion/react-m'
 import { toast } from 'sonner'
 import { cpvCatalogQueryKey, loadCpvCatalog } from '@/lib/cpv-catalog'
 import { cn } from '@/lib/utils'
@@ -59,18 +60,30 @@ export function MatchScoreCell({
       : opportunity.matchScore >= mediumRelevanceThreshold
         ? 'border-amber-600/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
         : 'text-muted-foreground'
+  const relevanceLabel =
+    opportunity.matchScore >= highRelevanceThreshold
+      ? 'Très pertinente'
+      : opportunity.matchScore >= mediumRelevanceThreshold
+        ? 'À examiner'
+        : 'Faible'
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type='button'
-          className='cursor-help'
+          className='cursor-help rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none'
           aria-label={`Score ${opportunity.matchScore} sur 100, ${reasonLabel}`}
         >
-          <Badge variant='outline' className={cn('tabular-nums', tone)}>
-            {opportunity.matchScore}/100
-          </Badge>
+          <span className='inline-flex'>
+            <Badge
+              variant='outline'
+              className={cn('gap-1.5 tabular-nums', tone)}
+            >
+              <strong>{opportunity.matchScore}</strong>
+              <span className='font-normal'>{relevanceLabel}</span>
+            </Badge>
+          </span>
         </button>
       </TooltipTrigger>
       <TooltipContent
@@ -134,23 +147,39 @@ export function OpportunityStatusCell({
     onError: (error) => toast.error(error.message),
   })
 
+  const statusTone = {
+    ToQualify: 'bg-amber-500',
+    Retained: 'bg-emerald-500',
+    Dismissed: 'bg-muted-foreground',
+  }[opportunity.status]
+
   return (
-    <Select
-      value={opportunity.status}
-      onValueChange={(status) => mutation.mutate(status as OpportunityStatus)}
-      disabled={mutation.isPending}
-    >
-      <SelectTrigger size='sm' className='w-32 cursor-pointer'>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {Object.entries(statusLabels).map(([status, label]) => (
-          <SelectItem key={status} value={status} className='cursor-pointer'>
-            {label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className='w-fit'>
+      <Select
+        value={opportunity.status}
+        onValueChange={(status) => mutation.mutate(status as OpportunityStatus)}
+        disabled={mutation.isPending}
+      >
+        <SelectTrigger size='sm' className='w-32 bg-background/80'>
+          <m.span
+            key={opportunity.status}
+            aria-hidden='true'
+            className={cn('size-1.5 rounded-full', statusTone)}
+            initial={{ opacity: 0.4, scale: 0.6 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.14, ease: 'easeOut' }}
+          />
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {Object.entries(statusLabels).map(([status, label]) => (
+            <SelectItem key={status} value={status}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   )
 }
 
@@ -164,7 +193,11 @@ export function DeadlineCell({
   urgentDeadlineDays: number
 }) {
   if (!value) {
-    return <span className='text-muted-foreground'>Non renseignée</span>
+    return (
+      <span className='rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground'>
+        Non renseignée
+      </span>
+    )
   }
 
   const deadline = new Date(value)
@@ -185,9 +218,9 @@ export function DeadlineCell({
     <div>
       <span
         className={cn(
-          'inline-flex items-center gap-1.5 font-medium',
+          'inline-flex items-center gap-1.5 rounded-md font-medium',
           expired && 'text-muted-foreground',
-          urgent && 'text-destructive'
+          urgent && 'bg-destructive/10 px-2 py-1 text-destructive'
         )}
       >
         <CalendarClock className='size-3.5' />

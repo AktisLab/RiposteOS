@@ -17,19 +17,11 @@ public sealed class ImportRunStore(
         CancellationToken cancellationToken)
     {
         source = SourcingSource.Normalize(source);
-        var staleBefore = timeProvider.GetUtcNow().AddHours(-2);
-        var activeRuns = await dbContext.Set<ImportRun>()
-            .Where(run => run.Source == source && ActiveStatuses.Contains(run.Status))
-            .OrderBy(run => run.QueuedAt)
-            .ToArrayAsync(cancellationToken);
-
-        foreach (var staleRun in activeRuns.Where(run => run.LastHeartbeatAt < staleBefore))
-        {
-            staleRun.Fail("L'import a été interrompu avant sa fin.", timeProvider.GetUtcNow());
-        }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        if (activeRuns.LastOrDefault(run => ActiveStatuses.Contains(run.Status)) is { } activeRun)
+        await ReconcileAsync(source, cancellationToken);
+        if (await dbContext.Set<ImportRun>()
+                .Where(run => run.Source == source && ActiveStatuses.Contains(run.Status))
+                .OrderByDescending(run => run.QueuedAt)
+                .FirstOrDefaultAsync(cancellationToken) is { } activeRun)
         {
             return (activeRun, false);
         }
@@ -54,16 +46,73 @@ public sealed class ImportRunStore(
         }
     }
 
-    public async Task<bool> StartAsync(Guid runId, CancellationToken cancellationToken)
+    public async Task<int> ReconcileAsync(string source, CancellationToken cancellationToken)
     {
-        var run = await dbContext.Set<ImportRun>().SingleAsync(item => item.Id == runId, cancellationToken);
-        if (!run.TryStart(timeProvider.GetUtcNow()))
+        source = SourcingSource.Normalize(source);
+        var now = timeProvider.GetUtcNow();
+        var staleBefore = now.AddHours(-2);
+        var staleRuns = await dbContext.Set<ImportRun>()
+            .Where(run => run.Source == source
+                && ActiveStatuses.Contains(run.Status)
+                && run.LastHeartbeatAt < staleBefore)
+            .ToArrayAsync(cancellationToken);
+
+        foreach (var run in staleRuns)
         {
-            return false;
+            run.Fail("L'import a été interrompu avant sa fin.", now);
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return true;
+        if (staleRuns.Length > 0)
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        return staleRuns.Length;
+    }
+
+    public Task<DateTimeOffset?> GetLastSuccessfulAtAsync(
+        string source,
+        CancellationToken cancellationToken)
+    {
+        source = SourcingSource.Normalize(source);
+        return dbContext.Set<ImportRun>()
+            .AsNoTracking()
+            .Where(run => run.Source == source && run.Status == ImportRunStatus.Succeeded)
+            .OrderByDescending(run => run.FinishedAt)
+            .Select(run => run.FinishedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<bool> StartAsync(Guid runId, CancellationToken cancellationToken)
+    {
+        var startedAt = timeProvider.GetUtcNow();
+        if (string.Equals(
+                dbContext.Database.ProviderName,
+                "Microsoft.EntityFrameworkCore.InMemory",
+                StringComparison.Ordinal))
+        {
+            var run = await dbContext.Set<ImportRun>().SingleOrDefaultAsync(
+                item => item.Id == runId && item.Status == ImportRunStatus.Queued,
+                cancellationToken);
+            if (run is null)
+            {
+                return false;
+            }
+
+            run.TryStart(startedAt);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+
+        dbContext.ChangeTracker.Clear();
+        return await dbContext.Set<ImportRun>()
+            .Where(run => run.Id == runId && run.Status == ImportRunStatus.Queued)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(run => run.Status, ImportRunStatus.Running)
+                    .SetProperty(run => run.StartedAt, startedAt)
+                    .SetProperty(run => run.LastHeartbeatAt, startedAt),
+                cancellationToken) == 1;
     }
 
     public async Task AddProgressAsync(
@@ -72,6 +121,7 @@ public sealed class ImportRunStore(
         int fetched,
         int created,
         int updated,
+        int unchanged,
         int skipped,
         CancellationToken cancellationToken)
     {
@@ -81,6 +131,7 @@ public sealed class ImportRunStore(
             fetched,
             created,
             updated,
+            unchanged,
             skipped,
             timeProvider.GetUtcNow());
         await dbContext.SaveChangesAsync(cancellationToken);

@@ -21,7 +21,7 @@ const opportunitySearchSchema = z.object({
   buyer: z.string().max(100).optional().catch(''),
   department: z.string().max(3).optional().catch(''),
   cpv: z.string().max(8).optional().catch(''),
-  sort: z.enum(opportunitySortFields).optional().catch('publicationDate'),
+  sort: z.enum(opportunitySortFields).optional().catch('matchScore'),
   direction: z.enum(['asc', 'desc']).optional().catch('desc'),
 })
 

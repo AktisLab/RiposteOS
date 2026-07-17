@@ -6,7 +6,13 @@ export type Opportunity = {
   source: string
   sourceId: string
   title: string
+  description: string | null
   buyer: string
+  procedureType: string | null
+  contractNature: string | null
+  estimatedValue: number | null
+  currency: string | null
+  executionDuration: string | null
   matchScore: number
   status: OpportunityStatus
   publicationDate: string
@@ -16,6 +22,7 @@ export type Opportunity = {
   descriptorLabels: string[]
   matchReasons: string[]
   noticeUrl: string
+  documentUrl: string | null
   updatedAt: string
 }
 
@@ -45,7 +52,8 @@ export type ImportRun = {
   currentPublicationDate: string | null
   fetched: number
   created: number
-  updated: number
+  changed: number
+  unchanged: number
   skipped: number
   errorMessage: string | null
 }
@@ -61,6 +69,8 @@ export type ImportRunListQuery = {
   page: number
   pageSize: number
 }
+
+export type OpportunitySource = 'boamp' | 'ted'
 
 export const opportunitiesQueryRoot = ['opportunities'] as const
 export const importRunsQueryRoot = ['sourcing-imports'] as const
@@ -96,10 +106,10 @@ export const updateOpportunityStatus = (
     errorMessage: "Impossible de modifier le statut de l'opportunité.",
   })
 
-export const importBoamp = () =>
-  apiRequest<ImportRun>('/api/sourcing/boamp/import', {
+export const importSource = (source: OpportunitySource) =>
+  apiRequest<ImportRun>(`/api/sourcing/${source}/import`, {
     method: 'POST',
-    errorMessage: "Impossible de planifier l'import BOAMP.",
+    errorMessage: `Impossible de planifier l'import ${source.toUpperCase()}.`,
   })
 
 export const importRunsQueryKey = (query: ImportRunListQuery) =>
@@ -108,5 +118,5 @@ export const importRunsQueryKey = (query: ImportRunListQuery) =>
 export const getImportRuns = (query: ImportRunListQuery) =>
   apiRequest<ImportRunPage>(
     `/api/sourcing/imports?page=${query.page}&pageSize=${query.pageSize}`,
-    { errorMessage: 'Impossible de suivre les imports BOAMP.' }
+    { errorMessage: 'Impossible de suivre les synchronisations.' }
   )

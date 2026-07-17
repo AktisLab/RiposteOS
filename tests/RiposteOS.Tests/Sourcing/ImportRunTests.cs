@@ -15,7 +15,7 @@ public sealed class ImportRunTests
 
         Assert.True(run.TryStart(queuedAt.AddMinutes(1)));
         Assert.True(run.TryStart(queuedAt.AddMinutes(2)));
-        run.RecordProgress(new DateOnly(2026, 7, 15), 4, 2, 1, 0, queuedAt.AddMinutes(3));
+        run.RecordProgress(new DateOnly(2026, 7, 15), 4, 2, 1, 1, 0, queuedAt.AddMinutes(3));
         run.Complete(queuedAt.AddMinutes(4));
 
         Assert.Equal(SourcingSource.Boamp, run.Source);
@@ -23,6 +23,7 @@ public sealed class ImportRunTests
         Assert.Equal(4, run.Fetched);
         Assert.Equal(2, run.Created);
         Assert.Equal(1, run.Updated);
+        Assert.Equal(1, run.Unchanged);
         Assert.False(run.TryStart(queuedAt.AddMinutes(5)));
     }
 
@@ -33,7 +34,7 @@ public sealed class ImportRunTests
         var run = new ImportRun(SourcingSource.Boamp, now);
 
         run.TryStart(now);
-        run.RecordProgress(DateOnly.FromDateTime(now.UtcDateTime), 1, 0, 0, 1, now);
+        run.RecordProgress(DateOnly.FromDateTime(now.UtcDateTime), 1, 0, 0, 0, 1, now);
         run.Complete(now);
 
         Assert.Equal(ImportRunStatus.PartiallyFailed, run.Status);
@@ -63,17 +64,24 @@ public sealed class ImportRunTests
             1,
             0,
             0,
+            0,
             ReferenceTime));
 
         Assert.Contains("running", exception.Message);
     }
 
     [Theory]
-    [InlineData(-1, 0, 0, 0)]
-    [InlineData(1, -1, 0, 0)]
-    [InlineData(1, 0, -1, 0)]
-    [InlineData(1, 0, 0, -1)]
-    public void ProgressCountersCannotBeNegative(int fetched, int created, int updated, int skipped)
+    [InlineData(-1, 0, 0, 0, 0)]
+    [InlineData(1, -1, 0, 0, 0)]
+    [InlineData(1, 0, -1, 0, 0)]
+    [InlineData(1, 0, 0, -1, 0)]
+    [InlineData(1, 0, 0, 0, -1)]
+    public void ProgressCountersCannotBeNegative(
+        int fetched,
+        int created,
+        int updated,
+        int unchanged,
+        int skipped)
     {
         var run = RunningImport();
 
@@ -82,6 +90,7 @@ public sealed class ImportRunTests
             fetched,
             created,
             updated,
+            unchanged,
             skipped,
             ReferenceTime));
     }
@@ -97,6 +106,7 @@ public sealed class ImportRunTests
             1,
             1,
             0,
+            0,
             ReferenceTime));
     }
 
@@ -111,6 +121,7 @@ public sealed class ImportRunTests
         Assert.Throws<ArgumentException>(() => running.Fail(" ", ReferenceTime));
         Assert.Throws<ArgumentOutOfRangeException>(() => running.RecordProgress(
             new DateOnly(2026, 7, 15),
+            0,
             0,
             0,
             0,

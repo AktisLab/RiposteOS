@@ -15,6 +15,8 @@ public sealed class RiposteWebApplicationFactory : WebApplicationFactory<Program
 
     public RecordingBackgroundJobClient Jobs { get; } = new();
 
+    public RecordingRecurringJobManager RecurringJobs { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureServices(services =>
@@ -26,12 +28,15 @@ public sealed class RiposteWebApplicationFactory : WebApplicationFactory<Program
                 options.UseInMemoryDatabase(_databaseName));
             services.RemoveAll<IBackgroundJobClient>();
             services.AddSingleton<IBackgroundJobClient>(Jobs);
+            services.RemoveAll<IRecurringJobManager>();
+            services.AddSingleton<IRecurringJobManager>(RecurringJobs);
         });
     }
 
     public async Task ResetAsync()
     {
         Jobs.Reset();
+        RecurringJobs.Reset();
         await using var scope = Services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<RiposteDbContext>();
         await dbContext.Database.EnsureDeletedAsync();

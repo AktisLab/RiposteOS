@@ -30,6 +30,7 @@ public sealed class SourcingSettingsStoreTests
             "Acheteur",
             new DateOnly(2026, 7, 15),
             now.AddDays(30),
+            ["FRA"],
             [],
             ["72267100"],
             [],
@@ -68,6 +69,57 @@ public sealed class SourcingSettingsStoreTests
         Assert.Same(settings, updated);
         Assert.Equal(["updated"], updated.Keywords);
     }
+
+    [Fact]
+    public async Task UpdatingCountryScopeDeletesOutOfScopeOpportunitiesAndTheirRevisions()
+    {
+        var now = new DateTimeOffset(2026, 7, 16, 10, 0, 0, TimeSpan.Zero);
+        await using var dbContext = CreateContext();
+        var store = new SourcingSettingsStore(dbContext, new FixedTimeProvider(now));
+        await store.UpdateAsync(
+            TestSupport.TestSourcingProfiles.Create() with
+            {
+                AllowedCountryCodes = ["FRA", "BEL"],
+            },
+            CancellationToken.None);
+        var french = CreateOpportunity("france", "FRA", now);
+        var belgian = CreateOpportunity("belgium", "BEL", now);
+        dbContext.AddRange(french, belgian);
+        await dbContext.SaveChangesAsync();
+        dbContext.Add(new OpportunityRevision(belgian, now.AddMinutes(1)));
+        await dbContext.SaveChangesAsync();
+
+        await store.UpdateAsync(
+            TestSupport.TestSourcingProfiles.Create() with
+            {
+                AllowedCountryCodes = ["FRA"],
+            },
+            CancellationToken.None);
+
+        Assert.Equal("france", (await dbContext.Set<Opportunity>().SingleAsync()).SourceId);
+        Assert.Empty(await dbContext.Set<OpportunityRevision>().ToArrayAsync());
+    }
+
+    private static Opportunity CreateOpportunity(
+        string sourceId,
+        string countryCode,
+        DateTimeOffset importedAt) => new(
+        SourcingSource.Ted,
+        sourceId,
+        "Logiciel métier",
+        "Acheteur",
+        new DateOnly(2026, 7, 16),
+        importedAt.AddDays(30),
+        [countryCode],
+        [],
+        ["72200000"],
+        [],
+        [],
+        40,
+        ["+25 CPV ciblé : 72200000"],
+        "",
+        "{}",
+        importedAt);
 
     private static RiposteDbContext CreateContext() => new(
         new DbContextOptionsBuilder<RiposteDbContext>()

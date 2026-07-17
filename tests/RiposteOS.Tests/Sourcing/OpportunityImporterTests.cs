@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using RiposteOS.Core.Sourcing;
@@ -10,6 +11,55 @@ namespace RiposteOS.Tests.Sourcing;
 
 public sealed class OpportunityImporterTests
 {
+    [Fact]
+    public async Task SkippedNoticeIsPersistedAndCanBeRetriedIdempotently()
+    {
+        await using var dbContext = new RiposteDbContext(
+            new DbContextOptionsBuilder<RiposteDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
+        var now = new DateTimeOffset(2026, 7, 16, 12, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FixedTimeProvider(now);
+        var source = new RecoverableIssueSource();
+        var settingsStore = new SourcingSettingsStore(dbContext, timeProvider);
+        await settingsStore.UpdateAsync(
+            TestSourcingProfiles.Create(["logiciel"]),
+            CancellationToken.None);
+        var runStore = new ImportRunStore(dbContext, timeProvider);
+        var importer = new OpportunityImporter(
+            [source],
+            dbContext,
+            timeProvider,
+            settingsStore,
+            runStore);
+        var run = (await runStore.QueueAsync(SourcingSource.Boamp, CancellationToken.None)).Run;
+        var job = new SourcingImportJob(importer, runStore, NullLogger<SourcingImportJob>.Instance);
+
+        await job.ExecuteAsync(
+            new ImportOpportunities(SourcingSource.Boamp, run.Id),
+            CancellationToken.None);
+
+        var issue = await dbContext.Set<ImportIssue>().SingleAsync();
+        var completedRun = await dbContext.Set<ImportRun>().SingleAsync(item => item.Id == run.Id);
+        Assert.Equal(ImportRunStatus.PartiallyFailed, completedRun.Status);
+        Assert.Equal("recoverable", issue.SourceId);
+        Assert.Null(issue.ResolvedAt);
+
+        Assert.Null(await importer.RetryIssueAsync(Guid.NewGuid(), CancellationToken.None));
+        var stillInvalid = await importer.RetryIssueAsync(issue.Id, CancellationToken.None);
+        Assert.False(stillInvalid!.Resolved);
+        Assert.Null(issue.ResolvedAt);
+
+        source.CanParse = true;
+        var retried = await importer.RetryIssueAsync(issue.Id, CancellationToken.None);
+        var repeated = await importer.RetryIssueAsync(issue.Id, CancellationToken.None);
+
+        Assert.True(retried!.Resolved);
+        Assert.True(repeated!.Resolved);
+        Assert.NotNull(issue.ResolvedAt);
+        Assert.Single(await dbContext.Set<Opportunity>().ToArrayAsync());
+    }
+
     [Fact]
     public async Task UnregisteredSourceIsRejected()
     {
@@ -33,6 +83,84 @@ public sealed class OpportunityImporterTests
     }
 
     [Fact]
+    public async Task ProfileChangeReassessesAnUnchangedNoticeWithoutCreatingARevision()
+    {
+        await using var dbContext = new RiposteDbContext(
+            new DbContextOptionsBuilder<RiposteDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
+        var now = new DateTimeOffset(2026, 7, 16, 12, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FixedTimeProvider(now);
+        var source = new StubOpportunitySource(new SourceOpportunity(
+            "profile-change",
+            "Logiciel métier",
+            "Acheteur",
+            new DateOnly(2026, 7, 16),
+            null,
+            ["FRA"],
+            ["69"],
+            ["72200000"],
+            [],
+            [],
+            string.Empty,
+            "{\"idweb\":\"profile-change\"}"));
+        var settingsStore = new SourcingSettingsStore(dbContext, timeProvider);
+        var initialProfile = TestSourcingProfiles.Create(["logiciel"]);
+        await settingsStore.UpdateAsync(initialProfile, CancellationToken.None);
+        var runStore = new ImportRunStore(dbContext, timeProvider);
+        var importer = new OpportunityImporter(
+            [source],
+            dbContext,
+            timeProvider,
+            settingsStore,
+            runStore);
+        var job = new SourcingImportJob(importer, runStore, NullLogger<SourcingImportJob>.Instance);
+        var firstRun = (await runStore.QueueAsync(SourcingSource.Boamp, CancellationToken.None)).Run;
+        await job.ExecuteAsync(
+            new ImportOpportunities(SourcingSource.Boamp, firstRun.Id),
+            CancellationToken.None);
+        var initialOpportunity = await dbContext.Set<Opportunity>().SingleAsync();
+        var initialScore = initialOpportunity.MatchScore;
+        var initialReasons = initialOpportunity.MatchReasons.ToArray();
+        Assert.True(initialScore > 0);
+
+        await settingsStore.UpdateAsync(
+            initialProfile with { PositiveSignals = ["logiciel"] },
+            CancellationToken.None);
+        var secondRun = (await runStore.QueueAsync(SourcingSource.Boamp, CancellationToken.None)).Run;
+        await job.ExecuteAsync(
+            new ImportOpportunities(SourcingSource.Boamp, secondRun.Id),
+            CancellationToken.None);
+        dbContext.ChangeTracker.Clear();
+        var rescored = await dbContext.Set<Opportunity>().SingleAsync();
+        Assert.Equal(initialScore, rescored.MatchScore);
+        Assert.NotEqual(initialReasons, rescored.MatchReasons);
+        Assert.Contains("+15 Signal positif : logiciel", rescored.MatchReasons);
+        Assert.Equal(
+            1,
+            (await dbContext.Set<ImportRun>().SingleAsync(run => run.Id == secondRun.Id)).Unchanged);
+
+        await settingsStore.UpdateAsync(
+            initialProfile with
+            {
+                PositiveSignals = [],
+                PreferredDepartmentCodes = [],
+                CpvWhitelistPrefixes = [],
+                CpvWatchPrefixes = [],
+            },
+            CancellationToken.None);
+        var thirdRun = (await runStore.QueueAsync(SourcingSource.Boamp, CancellationToken.None)).Run;
+        await job.ExecuteAsync(
+            new ImportOpportunities(SourcingSource.Boamp, thirdRun.Id),
+            CancellationToken.None);
+
+        dbContext.ChangeTracker.Clear();
+        Assert.Equal(0, (await dbContext.Set<Opportunity>().SingleAsync()).MatchScore);
+        Assert.Equal(1, (await dbContext.Set<ImportRun>().SingleAsync(run => run.Id == thirdRun.Id)).Unchanged);
+        Assert.Empty(await dbContext.Set<OpportunityRevision>().ToArrayAsync());
+    }
+
+    [Fact]
     public async Task CompletedImportsAdvanceTheCursorWithoutCreatingDuplicates()
     {
         await using var dbContext = new RiposteDbContext(
@@ -48,6 +176,7 @@ public sealed class OpportunityImporterTests
                 "Acheteur public",
                 new DateOnly(2026, 6, 18),
                 new DateTimeOffset(2026, 7, 17, 14, 0, 0, TimeSpan.Zero),
+                ["FRA"],
                 ["69"],
                 ["72200000"],
                 ["186"],
@@ -60,6 +189,7 @@ public sealed class OpportunityImporterTests
                 "Autre acheteur public",
                 new DateOnly(2026, 6, 18),
                 null,
+                ["FRA"],
                 ["69"],
                 ["72400000"],
                 ["186"],
@@ -89,35 +219,86 @@ public sealed class OpportunityImporterTests
         await job.ExecuteAsync(
             new ImportOpportunities(SourcingSource.Boamp, firstRun.Id),
             CancellationToken.None);
+        foreach (var opportunity in await dbContext.Set<Opportunity>().ToArrayAsync())
+        {
+            dbContext.Entry(opportunity).Property(item => item.ContentHash).CurrentValue = "";
+        }
+
+        await dbContext.SaveChangesAsync();
         dbContext.ChangeTracker.Clear();
         var secondRun = (await runStore.QueueAsync(SourcingSource.Boamp, CancellationToken.None)).Run;
         await job.ExecuteAsync(
             new ImportOpportunities(SourcingSource.Boamp, secondRun.Id),
             CancellationToken.None);
+        source.Replace(
+            new SourceOpportunity(
+                "26-59690",
+                "Développement d'un logiciel métier mis à jour",
+                "Acheteur public",
+                new DateOnly(2026, 6, 18),
+                new DateTimeOffset(2026, 7, 17, 14, 0, 0, TimeSpan.Zero),
+                ["FRA"],
+                ["69"],
+                ["72200000"],
+                ["186"],
+                ["Logiciel"],
+                "https://www.boamp.fr/pages/avis/?q=idweb:26-59690",
+                "{\"idweb\":\"26-59690\",\"version\":2}"),
+            new SourceOpportunity(
+                "26-59691",
+                "Refonte d'un portail usager",
+                "Autre acheteur public",
+                new DateOnly(2026, 6, 18),
+                null,
+                ["FRA"],
+                ["69"],
+                ["72400000"],
+                ["186"],
+                ["Logiciel"],
+                "https://www.boamp.fr/pages/avis/?q=idweb:26-59691",
+                "{\"idweb\":\"26-59691\"}"));
+        dbContext.ChangeTracker.Clear();
+        var thirdRun = (await runStore.QueueAsync(SourcingSource.Boamp, CancellationToken.None)).Run;
+        await job.ExecuteAsync(
+            new ImportOpportunities(SourcingSource.Boamp, thirdRun.Id),
+            CancellationToken.None);
 
         var runs = await dbContext.Set<ImportRun>().OrderBy(run => run.QueuedAt).ToArrayAsync();
-        Assert.Equal(2, runs.Length);
+        Assert.Equal(3, runs.Length);
         Assert.All(runs, run => Assert.Equal(ImportRunStatus.Succeeded, run.Status));
         Assert.Contains(runs, run => run.Created == 2);
-        Assert.Contains(runs, run => run.Updated == 2);
-        Assert.Equal(2, await dbContext.Set<Opportunity>().CountAsync());
+        Assert.Contains(runs, run => run.Updated == 0 && run.Created == 0 && run.Unchanged == 2);
+        Assert.Contains(runs, run => run.Updated == 1 && run.Unchanged == 1);
+        var persistedOpportunities = await dbContext.Set<Opportunity>().ToArrayAsync();
+        Assert.Equal(2, persistedOpportunities.Length);
+        Assert.All(persistedOpportunities, opportunity => Assert.Equal(64, opportunity.ContentHash.Length));
+        var revisions = await dbContext.Set<OpportunityRevision>()
+            .OrderBy(revision => revision.RawPayload)
+            .ToArrayAsync();
+        var revision = Assert.Single(revisions);
+        Assert.Equal("{\"idweb\":\"26-59690\"}", revision.RawPayload);
+        Assert.DoesNotContain("\"version\":2", revision.RawPayload, StringComparison.Ordinal);
         Assert.Equal(
             new DateOnly(2026, 6, 18),
             (await dbContext.Set<SourcingSyncState>().SingleAsync()).LastSuccessfulPublicationDate);
         Assert.Equal(["logiciel métier"], source.Settings!.Keywords);
         Assert.Equal(["porte automatique"], source.Settings.ExcludedKeywords);
         Assert.Equal(1, source.Settings.PageSize);
-        Assert.Equal([null, new DateOnly(2026, 6, 18)], source.Cursors);
+        Assert.Equal([null, new DateOnly(2026, 6, 18), new DateOnly(2026, 6, 18)], source.Cursors);
     }
 
     private sealed class StubOpportunitySource(params SourceOpportunity[] opportunities)
         : IOpportunitySource
     {
+        private SourceOpportunity[] _opportunities = opportunities;
+
         public string Key => SourcingSource.Boamp;
 
         public SourcingSettings? Settings { get; private set; }
 
         public List<DateOnly?> Cursors { get; } = [];
+
+        public void Replace(params SourceOpportunity[] replacements) => _opportunities = replacements;
 
         public DateOnly GetStartDate(DateOnly today, DateOnly? lastSuccessfulDate)
         {
@@ -133,12 +314,61 @@ public sealed class OpportunityImporterTests
         {
             Settings = settings;
 
-            foreach (var page in opportunities.Chunk(settings.PageSize))
+            foreach (var page in _opportunities.Chunk(settings.PageSize))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 yield return new SourcingPage(startDate, page.Length, page, 0);
                 await Task.Yield();
             }
+        }
+    }
+
+    private sealed class RecoverableIssueSource : IOpportunitySource
+    {
+        private const string RawPayload = "{\"idweb\":\"recoverable\"}";
+
+        public string Key => SourcingSource.Boamp;
+
+        public bool CanParse { get; set; }
+
+        public DateOnly GetStartDate(DateOnly today, DateOnly? lastSuccessfulDate) => today;
+
+        public async IAsyncEnumerable<SourcingPage> ReadPagesAsync(
+            SourcingSettings settings,
+            DateOnly startDate,
+            DateOnly endDate,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.CompletedTask;
+            yield return new SourcingPage(
+                startDate,
+                1,
+                [],
+                1,
+                [new SourceImportIssue("recoverable", "mapping_json", RawPayload)]);
+        }
+
+        public SourceOpportunity ParseRawOpportunity(string rawPayload)
+        {
+            if (!CanParse)
+            {
+                throw new JsonException("The source mapping has not been fixed yet.");
+            }
+
+            Assert.Equal(RawPayload, rawPayload);
+            return new SourceOpportunity(
+                "recoverable",
+                "Développement d'un logiciel",
+                "Acheteur",
+                new DateOnly(2026, 7, 16),
+                null,
+                ["FRA"],
+                ["69"],
+                ["72200000"],
+                [],
+                [],
+                string.Empty,
+                RawPayload);
         }
     }
 

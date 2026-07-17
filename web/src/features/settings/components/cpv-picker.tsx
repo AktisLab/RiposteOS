@@ -64,7 +64,7 @@ export function CpvPicker({
   }
 
   return (
-    <div className='space-y-4 rounded-lg border bg-background p-4'>
+    <div className='space-y-4 border-b pb-6 last:border-b-0 last:pb-0'>
       <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
         <div>
           <div className='flex items-center gap-2'>
@@ -93,7 +93,7 @@ export function CpvPicker({
               className='cursor-pointer'
               disabled={prefixes.length >= 100}
             >
-              <Search />
+              <Search aria-hidden='true' />
               Ajouter un CPV
             </Button>
           </PopoverTrigger>
@@ -141,9 +141,9 @@ export function CpvPicker({
                           className='cursor-pointer items-start py-2.5'
                         >
                           {alreadyCovered ? (
-                            <Check className='mt-0.5' />
+                            <Check aria-hidden='true' className='mt-0.5' />
                           ) : (
-                            <Search className='mt-0.5' />
+                            <Search aria-hidden='true' className='mt-0.5' />
                           )}
                           <span className='min-w-0 flex-1'>
                             <span className='flex items-center gap-2'>
@@ -174,7 +174,7 @@ export function CpvPicker({
           {prefixes.map((prefix) => (
             <li
               key={prefix}
-              className='relative rounded-md border bg-muted/25 p-3 pr-10'
+              className='relative rounded-md bg-muted/40 p-3 pr-10'
             >
               <Badge variant='outline' className='font-mono'>
                 {prefix}*
@@ -195,7 +195,7 @@ export function CpvPicker({
                   update(prefixes.filter((existing) => existing !== prefix))
                 }
               >
-                <X />
+                <X aria-hidden='true' />
               </Button>
             </li>
           ))}

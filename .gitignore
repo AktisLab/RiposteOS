@@ -1,4 +1,6 @@
 .DS_Store
+AGENTS.md
+web/AGENTS.md
 .env
 .idea/
 .vscode/
@@ -9,3 +11,4 @@ TestResults/
 web/dist/
 web/node_modules/
 web/.pnpm-store/
+.pnpm-store/

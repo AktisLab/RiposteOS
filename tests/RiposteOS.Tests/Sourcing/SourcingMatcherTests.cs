@@ -86,4 +86,38 @@ public sealed class SourcingMatcherTests
         Assert.Equal(0, empty.Score);
         Assert.Empty(empty.Reasons);
     }
+
+    [Fact]
+    public void SignalsMatchNormalizedWordsAndPhrasesWithoutSubstringFalsePositives()
+    {
+        var profile = TestSourcingProfiles.Create() with
+        {
+            PositiveSignals = ["API", "expérience utilisateur"],
+            NegativeSignals = ["hébergement seul"],
+        };
+        var settings = new SourcingSettings(profile, Now);
+
+        var match = SourcingMatcher.Evaluate(
+            settings,
+            "Conception d’une expérience-utilisateur et d'API sécurisées",
+            [],
+            [],
+            ["HÉBERGEMENT SEUL"],
+            null,
+            Now);
+        var falsePositive = SourcingMatcher.Evaluate(
+            settings,
+            "Fornitura di capitali e servizi sociali",
+            [],
+            [],
+            [],
+            null,
+            Now);
+
+        Assert.Equal(0, match.Score);
+        Assert.Contains("+15 Signal positif : API", match.Reasons);
+        Assert.Contains("+15 Signal positif : expérience utilisateur", match.Reasons);
+        Assert.Contains("-30 Signal négatif : hébergement seul", match.Reasons);
+        Assert.Empty(falsePositive.Reasons);
+    }
 }

@@ -5,6 +5,7 @@ public sealed record SourcingSettingsRequest(
     string[]? ExcludedKeywords,
     string[]? PositiveSignals,
     string[]? NegativeSignals,
+    string[]? AllowedCountryCodes,
     string[]? PreferredDepartmentCodes,
     string[]? CpvWhitelistPrefixes,
     string[]? CpvWatchPrefixes,
@@ -18,4 +19,6 @@ public sealed record SourcingSettingsRequest(
     int CpvExclusionPenalty,
     int UrgentDeadlineDays,
     int UrgentDeadlinePenalty,
-    int HighRelevanceThreshold);
+    int HighRelevanceThreshold,
+    string? BoampCron = null,
+    string? TedCron = null);

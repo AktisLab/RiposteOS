@@ -45,11 +45,31 @@ public static class DependencyInjection
         }).AddStandardResilienceHandler();
         services.AddScoped<IOpportunitySource>(serviceProvider =>
             serviceProvider.GetRequiredService<BoampSource>());
+        services.AddOptions<TedOptions>()
+            .Bind(configuration.GetSection(TedOptions.SectionName))
+            .Validate(options => Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out _), "Ted:BaseUrl must be an absolute URL.")
+            .Validate(options => options.InitialLookbackDays is >= 0 and <= 365, "Ted:InitialLookbackDays must be between 0 and 365.")
+            .Validate(options => options.OverlapDays is >= 0 and <= 30, "Ted:OverlapDays must be between 0 and 30.")
+            .ValidateOnStart();
+        services.AddHttpClient<TedSource>((serviceProvider, client) =>
+        {
+            var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<TedOptions>>().Value;
+            client.BaseAddress = new Uri(options.BaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(30);
+        }).AddStandardResilienceHandler();
+        services.AddScoped<IOpportunitySource>(serviceProvider =>
+            serviceProvider.GetRequiredService<TedSource>());
         services.AddScoped<OpportunityImporter>();
         services.AddScoped<SourcingImportJob>();
         services.AddScoped<ImportRunStore>();
         services.AddScoped<SourcingSettingsStore>();
         services.AddScoped<SourcingFacade>();
+        services.AddScoped<SourcingSynchronizationJob>();
+        services.AddOptions<SourcingSynchronizationOptions>()
+            .Bind(configuration.GetSection(SourcingSynchronizationOptions.SectionName))
+            .Validate(options => SourcingRecurringJobRegistrar.IsValidCron(options.Cron), "SourcingSynchronization:Cron must be a valid five-field cron expression.")
+            .Validate(options => options.SuccessSlaHours is >= 1 and <= 168, "SourcingSynchronization:SuccessSlaHours must be between 1 and 168.")
+            .ValidateOnStart();
 
         services.AddHangfire(options => options.UsePostgreSqlStorage(
             storage => storage.UseNpgsqlConnection(connectionString),
@@ -64,6 +84,7 @@ public static class DependencyInjection
     public static IServiceCollection AddBackgroundProcessing(this IServiceCollection services)
     {
         services.AddHangfireServer();
+        services.AddHostedService<SourcingRecurringJobRegistrar>();
 
         return services;
     }

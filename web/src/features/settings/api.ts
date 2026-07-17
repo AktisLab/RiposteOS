@@ -5,6 +5,7 @@ export type SourcingSettings = {
   excludedKeywords: string[]
   positiveSignals: string[]
   negativeSignals: string[]
+  allowedCountryCodes: string[]
   preferredDepartmentCodes: string[]
   cpvWhitelistPrefixes: string[]
   cpvWatchPrefixes: string[]
@@ -19,6 +20,8 @@ export type SourcingSettings = {
   urgentDeadlineDays: number
   urgentDeadlinePenalty: number
   highRelevanceThreshold: number
+  boampCron: string
+  tedCron: string
   updatedAt: string
 }
 

@@ -12,9 +12,24 @@
   }
   html {
     @apply overflow-x-hidden;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
   }
   body {
-    @apply min-h-svh w-full bg-background text-foreground has-[div[data-variant='inset']]:bg-sidebar;
+    @apply min-h-svh w-full bg-background font-sans text-foreground antialiased has-[div[data-variant='inset']]:bg-sidebar;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  h1,
+  h2,
+  h3,
+  [data-font='display'] {
+    @apply font-display;
+    text-wrap: balance;
+  }
+
+  [data-slot='table'] {
+    font-variant-numeric: tabular-nums;
   }
 
   /* Override Radix scroll locking for sticky headers */

@@ -47,7 +47,7 @@ export function ImportHistoryDrawer({
         <SheetHeader className='border-b pe-12 text-start'>
           <SheetTitle>Historique des synchronisations</SheetTitle>
           <SheetDescription>
-            Imports BOAMP, progression et résultats de chaque exécution.
+            Imports par source, progression et résultats de chaque exécution.
           </SheetDescription>
         </SheetHeader>
 

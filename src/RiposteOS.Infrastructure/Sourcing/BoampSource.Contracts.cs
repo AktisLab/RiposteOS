@@ -5,4 +5,5 @@ public sealed record BoampPage(
     int Fetched,
     int TotalCount,
     IReadOnlyList<SourceOpportunity> Opportunities,
-    int Skipped);
+    int Skipped,
+    IReadOnlyList<SourceImportIssue>? Issues = null);

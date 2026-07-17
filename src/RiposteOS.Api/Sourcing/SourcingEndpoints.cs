@@ -133,6 +133,49 @@ public static class SourcingEndpoints
                 : TypedResults.Ok(SourcingMapper.ToImportRunResponse(run));
         });
 
+        group.MapGet("/sourcing/imports/{id:guid}/issues", async Task<IResult> (
+            Guid id,
+            [AsParameters] ImportRunListRequest request,
+            SourcingFacade sourcing,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = ValidatePagination(request.Page, request.PageSize);
+            if (errors.Count > 0)
+            {
+                return TypedResults.ValidationProblem(errors);
+            }
+
+            var page = request.Page ?? 1;
+            var pageSize = request.PageSize ?? 20;
+            var result = await sourcing.ListImportIssuesAsync(
+                id,
+                page,
+                pageSize,
+                cancellationToken);
+            return TypedResults.Ok(new ImportIssueListResponse(
+                SourcingMapper.ToImportIssueResponses(result.Items),
+                result.TotalCount,
+                page,
+                pageSize));
+        });
+
+        group.MapPost("/sourcing/import-issues/{id:guid}/retry", async Task<IResult> (
+            Guid id,
+            SourcingFacade sourcing,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await sourcing.RetryImportIssueAsync(id, cancellationToken);
+            if (result is null)
+            {
+                return TypedResults.NotFound();
+            }
+
+            var response = SourcingMapper.ToImportIssueResponse(result.Issue);
+            return result.Resolved
+                ? TypedResults.Ok(response)
+                : TypedResults.UnprocessableEntity(response);
+        });
+
         group.MapGet("/sourcing/settings", async Task<IResult> (
             SourcingFacade sourcing,
             CancellationToken cancellationToken) =>
@@ -198,6 +241,7 @@ public static class SourcingEndpoints
 
         ValidateTerms(request.PositiveSignals, nameof(request.PositiveSignals), errors);
         ValidateTerms(request.NegativeSignals, nameof(request.NegativeSignals), errors);
+        ValidateCodes(request.AllowedCountryCodes, nameof(request.AllowedCountryCodes), 3, 3, char.IsLetter, errors);
         ValidateCodes(request.PreferredDepartmentCodes, nameof(request.PreferredDepartmentCodes), 1, 3, char.IsLetterOrDigit, errors);
         ValidateCodes(request.CpvWhitelistPrefixes, nameof(request.CpvWhitelistPrefixes), 2, 8, char.IsDigit, errors);
         ValidateCodes(request.CpvWatchPrefixes, nameof(request.CpvWatchPrefixes), 2, 8, char.IsDigit, errors);
@@ -217,6 +261,9 @@ public static class SourcingEndpoints
             errors[nameof(request.UrgentDeadlineDays)] = ["Le délai urgent doit être compris entre 0 et 365 jours."];
         }
 
+        ValidateCron(request.BoampCron, nameof(request.BoampCron), errors);
+        ValidateCron(request.TedCron, nameof(request.TedCron), errors);
+
         return errors;
     }
 
@@ -225,6 +272,7 @@ public static class SourcingEndpoints
         request.ExcludedKeywords ?? [],
         request.PositiveSignals ?? [],
         request.NegativeSignals ?? [],
+        request.AllowedCountryCodes ?? ["FRA"],
         request.PreferredDepartmentCodes ?? [],
         request.CpvWhitelistPrefixes ?? [],
         request.CpvWatchPrefixes ?? [],
@@ -238,7 +286,20 @@ public static class SourcingEndpoints
         request.CpvExclusionPenalty,
         request.UrgentDeadlineDays,
         request.UrgentDeadlinePenalty,
-        request.HighRelevanceThreshold);
+        request.HighRelevanceThreshold,
+        request.BoampCron ?? SourcingSettings.DefaultSynchronizationCron,
+        request.TedCron ?? SourcingSettings.DefaultSynchronizationCron);
+
+    private static void ValidateCron(
+        string? cron,
+        string name,
+        Dictionary<string, string[]> errors)
+    {
+        if (cron is not null && !SourcingRecurringJobRegistrar.IsValidCron(cron))
+        {
+            errors[name] = ["Le CRON doit être une expression valide à 5 champs."];
+        }
+    }
 
     private static void ValidateTerms(
         string[]? values,

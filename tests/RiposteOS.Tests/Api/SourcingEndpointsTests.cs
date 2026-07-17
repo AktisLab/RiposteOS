@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Hangfire.Common;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using RiposteOS.Api.Sourcing.Dtos;
 using RiposteOS.Core.Sourcing;
@@ -25,6 +26,7 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
             "Acheteur",
             new DateOnly(2026, 7, 15),
             importedAt.AddDays(10),
+            ["FRA"],
             ["69"],
             ["72200000"],
             ["186"],
@@ -33,7 +35,14 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
             ["+25 CPV ciblé : 72200000"],
             "https://example.test/26-1",
             "{}",
-            importedAt);
+            importedAt,
+            "Description du besoin",
+            "open",
+            "services",
+            250_000m,
+            "EUR",
+            "24 MONTH",
+            "https://example.test/dce");
         var run = new ImportRun(SourcingSource.Boamp, importedAt);
 
         await using (var scope = factory.Services.CreateAsyncScope())
@@ -50,7 +59,15 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         var persistedRun = await client.GetFromJsonAsync<ImportRunResponse>($"/api/sourcing/imports/{run.Id}");
         using var missingRun = await client.GetAsync($"/api/sourcing/imports/{Guid.NewGuid()}");
 
-        Assert.Equal("26-1", Assert.Single(opportunities!.Items).SourceId);
+        var item = Assert.Single(opportunities!.Items);
+        Assert.Equal("26-1", item.SourceId);
+        Assert.Equal("Description du besoin", item.Description);
+        Assert.Equal("open", item.ProcedureType);
+        Assert.Equal("services", item.ContractNature);
+        Assert.Equal(250_000m, item.EstimatedValue);
+        Assert.Equal("EUR", item.Currency);
+        Assert.Equal("24 MONTH", item.ExecutionDuration);
+        Assert.Equal("https://example.test/dce", item.DocumentUrl);
         Assert.Equal(1, opportunities.TotalCount);
         Assert.Equal(1, opportunities.Page);
         Assert.Equal(20, opportunities.PageSize);
@@ -88,6 +105,69 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         Assert.Equal(older.Id, Assert.Single(secondPage!.Items).Id);
     }
 
+    [Fact]
+    public async Task ImportIssuesCanBeListedAndRetriedWithoutExposingRawPayload()
+    {
+        await factory.ResetAsync();
+        var now = new DateTimeOffset(2026, 7, 16, 12, 0, 0, TimeSpan.Zero);
+        var run = new ImportRun(SourcingSource.Boamp, now);
+        ImportIssue issue;
+        ImportIssue invalidIssue;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<RiposteDbContext>();
+            dbContext.AddRange(
+                run,
+                new SourcingSettings(TestSourcingProfiles.Create(["logiciel"]), now));
+            await dbContext.SaveChangesAsync();
+            issue = new ImportIssue(
+                run.Id,
+                SourcingSource.Boamp,
+                "26-retry",
+                "mapping_json",
+                "{\"idweb\":\"26-retry\",\"objet\":\"Logiciel métier\",\"dateparution\":\"2026-07-16\",\"secret\":\"never-expose\"}",
+                now);
+            invalidIssue = new ImportIssue(
+                run.Id,
+                SourcingSource.Boamp,
+                "invalid-retry",
+                "mapping_json",
+                "{\"idweb\":\"invalid-retry\"}",
+                now);
+            dbContext.AddRange(issue, invalidIssue);
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        using var listResponse = await client.GetAsync($"/api/sourcing/imports/{run.Id}/issues");
+        var body = await listResponse.Content.ReadAsStringAsync();
+        var issues = await listResponse.Content.ReadFromJsonAsync<ImportIssueListResponse>();
+        using var retryResponse = await client.PostAsync(
+            $"/api/sourcing/import-issues/{issue.Id}/retry",
+            null);
+        using var invalidPagination = await client.GetAsync(
+            $"/api/sourcing/imports/{run.Id}/issues?page=0");
+        using var missingRetry = await client.PostAsync(
+            $"/api/sourcing/import-issues/{Guid.NewGuid()}/retry",
+            null);
+        using var unresolvedRetry = await client.PostAsync(
+            $"/api/sourcing/import-issues/{invalidIssue.Id}/retry",
+            null);
+
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+        Assert.DoesNotContain("never-expose", body, StringComparison.Ordinal);
+        Assert.Equal(2, issues!.TotalCount);
+        Assert.Equal(HttpStatusCode.OK, retryResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidPagination.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, missingRetry.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, unresolvedRetry.StatusCode);
+        await using var verificationScope = factory.Services.CreateAsyncScope();
+        var verificationContext = verificationScope.ServiceProvider.GetRequiredService<RiposteDbContext>();
+        Assert.NotNull((await verificationContext.Set<ImportIssue>()
+            .SingleAsync(item => item.Id == issue.Id)).ResolvedAt);
+        Assert.Equal("26-retry", (await verificationContext.Set<Opportunity>().SingleAsync()).SourceId);
+    }
+
     [Theory]
     [InlineData("/api/sourcing/imports?page=0")]
     [InlineData("/api/sourcing/imports?pageSize=101")]
@@ -114,6 +194,7 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
                 "Ville de Lyon",
                 new DateOnly(2026, 7, 14),
                 importedAt.AddDays(5),
+                ["FRA"],
                 ["69"],
                 ["72400000"],
                 ["186"],
@@ -130,6 +211,7 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
                 "Métropole de Lyon",
                 new DateOnly(2026, 7, 15),
                 importedAt.AddDays(10),
+                ["FRA"],
                 ["69"],
                 ["72200000"],
                 ["186"],
@@ -149,6 +231,8 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
             "/api/opportunities?filter=buyer=*m%C3%A9tropole/i");
         var businessFiltered = await client.GetFromJsonAsync<OpportunityListResponse>(
             "/api/opportunities?departments=69&cpv=722&filter=matchScore%3E=35,status=ToQualify");
+        var defaultOrder = await client.GetFromJsonAsync<OpportunityListResponse>(
+            "/api/opportunities");
 
         Assert.Equal(2, firstPage!.TotalCount);
         Assert.Equal("Logiciel métier", Assert.Single(firstPage.Items).Title);
@@ -156,6 +240,9 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         Assert.Equal("26-1", Assert.Single(filtered!.Items).SourceId);
         Assert.Equal(1, filtered.TotalCount);
         Assert.Equal("26-1", Assert.Single(businessFiltered!.Items).SourceId);
+        Assert.Equal(
+            ["26-1", "26-2"],
+            defaultOrder!.Items.Select(opportunity => opportunity.SourceId));
     }
 
     [Fact]
@@ -170,6 +257,7 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
             "Acheteur",
             new DateOnly(2026, 7, 15),
             importedAt.AddDays(10),
+            ["FRA"],
             ["69"],
             ["72200000"],
             ["186"],
@@ -249,15 +337,17 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         using var unknown = await client.PostAsync("/api/sourcing/unknown/import", null);
         using var profile = await client.PutAsJsonAsync("/api/sourcing/settings", ValidSettings);
         using var accepted = await client.PostAsync("/api/sourcing/boamp/import", null);
+        using var acceptedTed = await client.PostAsync("/api/sourcing/ted/import", null);
         using var conflict = await client.PostAsync("/api/sourcing/boamp/import", null);
 
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
         Assert.Equal(HttpStatusCode.OK, profile.StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, acceptedTed.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
         Assert.Equal(nameof(SourcingImportJob.ExecuteAsync), factory.Jobs.CreatedJob!.Method.Name);
         var command = Assert.IsType<ImportOpportunities>(factory.Jobs.CreatedJob.Args[0]);
-        Assert.Equal(SourcingSource.Boamp, command.Source);
+        Assert.Equal(SourcingSource.Ted, command.Source);
     }
 
     [Fact]
@@ -292,6 +382,8 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
                 Keywords = ["  portail  ", "PORTAIL"],
                 ExcludedKeywords = ["porte"],
                 PageSize = 25,
+                BoampCron = "5 * * * *",
+                TedCron = "0 */6 * * *",
             });
         var updated = await response.Content.ReadFromJsonAsync<SourcingSettingsResponse>();
 
@@ -299,7 +391,14 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(["portail"], updated!.Keywords);
         Assert.Equal(["porte"], updated.ExcludedKeywords);
+        Assert.Equal(["FRA"], updated.AllowedCountryCodes);
         Assert.Equal(25, updated.PageSize);
+        Assert.Equal("5 * * * *", updated.BoampCron);
+        Assert.Equal("0 */6 * * *", updated.TedCron);
+        Assert.Collection(
+            factory.RecurringJobs.Jobs.OrderBy(job => job.Id),
+            job => Assert.Equal(("sourcing-sync-boamp", "5 * * * *", TimeZoneInfo.Utc), job),
+            job => Assert.Equal(("sourcing-sync-ted", "0 */6 * * *", TimeZoneInfo.Utc), job));
     }
 
     [Fact]
@@ -315,18 +414,24 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
                 ExcludedKeywords = null,
                 PositiveSignals = null,
                 NegativeSignals = null,
+                AllowedCountryCodes = null,
                 PreferredDepartmentCodes = null,
                 CpvWhitelistPrefixes = null,
                 CpvWatchPrefixes = null,
                 CpvExcludedPrefixes = null,
+                BoampCron = null,
+                TedCron = null,
             });
         var updated = await response.Content.ReadFromJsonAsync<SourcingSettingsResponse>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Empty(updated!.ExcludedKeywords);
         Assert.Empty(updated.PositiveSignals);
+        Assert.Equal(["FRA"], updated.AllowedCountryCodes);
         Assert.Empty(updated.PreferredDepartmentCodes);
         Assert.Empty(updated.CpvWhitelistPrefixes);
+        Assert.Equal(SourcingSettings.DefaultSynchronizationCron, updated.BoampCron);
+        Assert.Equal(SourcingSettings.DefaultSynchronizationCron, updated.TedCron);
     }
 
     [Theory]
@@ -378,9 +483,13 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         ValidSettings with { ExcludedKeywords = Enumerable.Repeat("x", 101).ToArray() },
         ValidSettings with { ExcludedKeywords = [""] },
         ValidSettings with { PreferredDepartmentCodes = ["1234"] },
+        ValidSettings with { AllowedCountryCodes = ["FR"] },
+        ValidSettings with { AllowedCountryCodes = ["F1A"] },
         ValidSettings with { CpvWhitelistPrefixes = ["abc"] },
         ValidSettings with { PositiveSignalWeight = 101 },
         ValidSettings with { UrgentDeadlineDays = 366 },
+        ValidSettings with { BoampCron = "not-a-cron" },
+        ValidSettings with { TedCron = "0 0 0 0 0 0" },
     };
 
     private static SourcingSettingsRequest ValidSettings => new(
@@ -388,6 +497,7 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         [],
         ["logiciel métier"],
         ["porte automatique"],
+        ["FRA"],
         ["69"],
         ["72"],
         ["48000000"],
@@ -401,7 +511,9 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         50,
         7,
         20,
-        35);
+        35,
+        SourcingSettings.DefaultSynchronizationCron,
+        SourcingSettings.DefaultSynchronizationCron);
 
     private async Task SeedOpportunitiesAsync(params Opportunity[] opportunities)
     {

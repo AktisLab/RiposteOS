@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Clock3, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { SourcingSourceLogo } from '@/components/sourcing-source-logo'
 import { type ImportRun } from '../api'
 
 export function ImportRunStatus({ run }: { run: ImportRun }) {
@@ -14,7 +15,10 @@ export function ImportRunStatus({ run }: { run: ImportRun }) {
         />
         <div className='min-w-0'>
           <div className='flex flex-wrap items-center gap-2'>
-            <p className='text-sm font-medium'>Import BOAMP</p>
+            <p className='inline-flex items-center gap-1.5 text-sm font-medium'>
+              <SourcingSourceLogo source={run.source} className='size-4' />
+              Import {run.source}
+            </p>
             <Badge variant='outline'>{presentation.label}</Badge>
           </div>
           <p className='mt-0.5 truncate text-xs text-muted-foreground'>
@@ -25,7 +29,8 @@ export function ImportRunStatus({ run }: { run: ImportRun }) {
       <div className='grid grid-cols-2 gap-2 text-xs tabular-nums sm:grid-cols-4'>
         <Metric label='Récupérés' value={run.fetched} />
         <Metric label='Créés' value={run.created} />
-        <Metric label='Actualisés' value={run.updated} />
+        <Metric label='Modifiés' value={run.changed} />
+        <Metric label='Inchangés' value={run.unchanged} />
         {run.skipped > 0 && <Metric label='Ignorés' value={run.skipped} />}
       </div>
     </div>

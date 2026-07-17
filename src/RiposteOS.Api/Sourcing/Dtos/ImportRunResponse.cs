@@ -10,6 +10,7 @@ public sealed record ImportRunResponse(
     DateOnly? CurrentPublicationDate,
     int Fetched,
     int Created,
-    int Updated,
+    int Changed,
+    int Unchanged,
     int Skipped,
     string? ErrorMessage);

@@ -3,11 +3,13 @@ namespace RiposteOS.Core.Sourcing;
 public sealed class SourcingSettings
 {
     public const int DefaultId = 1;
+    public const string DefaultSynchronizationCron = "0 * * * *";
 
     private string[] _keywords = [];
     private string[] _excludedKeywords = [];
     private string[] _positiveSignals = [];
     private string[] _negativeSignals = [];
+    private string[] _allowedCountryCodes = [];
     private string[] _preferredDepartmentCodes = [];
     private string[] _cpvWhitelistPrefixes = [];
     private string[] _cpvWatchPrefixes = [];
@@ -25,6 +27,8 @@ public sealed class SourcingSettings
         int urgentDeadlineDays,
         int urgentDeadlinePenalty,
         int highRelevanceThreshold,
+        string boampCron,
+        string tedCron,
         DateTimeOffset updatedAt)
     {
         Id = id;
@@ -38,6 +42,8 @@ public sealed class SourcingSettings
         UrgentDeadlineDays = urgentDeadlineDays;
         UrgentDeadlinePenalty = urgentDeadlinePenalty;
         HighRelevanceThreshold = highRelevanceThreshold;
+        BoampCron = boampCron;
+        TedCron = tedCron;
         UpdatedAt = updatedAt;
     }
 
@@ -46,7 +52,7 @@ public sealed class SourcingSettings
             profile.NegativeSignalPenalty, profile.PreferredDepartmentBoost,
             profile.CpvWhitelistBoost, profile.CpvWatchBoost, profile.CpvExclusionPenalty,
             profile.UrgentDeadlineDays, profile.UrgentDeadlinePenalty,
-            profile.HighRelevanceThreshold, updatedAt)
+            profile.HighRelevanceThreshold, profile.BoampCron, profile.TedCron, updatedAt)
     {
         ChangeProfile(profile, updatedAt);
     }
@@ -60,6 +66,8 @@ public sealed class SourcingSettings
     public IReadOnlyList<string> PositiveSignals => Array.AsReadOnly(_positiveSignals);
 
     public IReadOnlyList<string> NegativeSignals => Array.AsReadOnly(_negativeSignals);
+
+    public IReadOnlyList<string> AllowedCountryCodes => Array.AsReadOnly(_allowedCountryCodes);
 
     public IReadOnlyList<string> PreferredDepartmentCodes => Array.AsReadOnly(_preferredDepartmentCodes);
 
@@ -88,6 +96,10 @@ public sealed class SourcingSettings
     public int UrgentDeadlinePenalty { get; private set; }
 
     public int HighRelevanceThreshold { get; private set; }
+
+    public string BoampCron { get; private set; }
+
+    public string TedCron { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
 
@@ -126,6 +138,9 @@ public sealed class SourcingSettings
             throw new ArgumentOutOfRangeException(nameof(profile), "Urgent deadline days must be between 0 and 365.");
         }
 
+        var boampCron = NormalizeCron(profile.BoampCron, nameof(profile.BoampCron));
+        var tedCron = NormalizeCron(profile.TedCron, nameof(profile.TedCron));
+
         if (updatedAt < UpdatedAt)
         {
             throw new ArgumentOutOfRangeException(nameof(updatedAt), "Settings updates must be chronological.");
@@ -135,6 +150,12 @@ public sealed class SourcingSettings
         _excludedKeywords = normalizedExclusions;
         _positiveSignals = NormalizeTerms(profile.PositiveSignals, nameof(profile.PositiveSignals));
         _negativeSignals = NormalizeTerms(profile.NegativeSignals, nameof(profile.NegativeSignals));
+        _allowedCountryCodes = NormalizeCodes(
+            profile.AllowedCountryCodes,
+            nameof(profile.AllowedCountryCodes),
+            3,
+            3,
+            char.IsLetter);
         _preferredDepartmentCodes = NormalizeCodes(
             profile.PreferredDepartmentCodes,
             nameof(profile.PreferredDepartmentCodes),
@@ -154,6 +175,8 @@ public sealed class SourcingSettings
         UrgentDeadlineDays = profile.UrgentDeadlineDays;
         UrgentDeadlinePenalty = profile.UrgentDeadlinePenalty;
         HighRelevanceThreshold = profile.HighRelevanceThreshold;
+        BoampCron = boampCron;
+        TedCron = tedCron;
         UpdatedAt = updatedAt;
     }
 
@@ -201,5 +224,15 @@ public sealed class SourcingSettings
         {
             throw new ArgumentOutOfRangeException(parameterName, "Scoring values must be between 0 and 100.");
         }
+    }
+
+    private static string NormalizeCron(string value, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 100)
+        {
+            throw new ArgumentException("Cron expressions must contain between 1 and 100 characters.", parameterName);
+        }
+
+        return value.Trim();
     }
 }

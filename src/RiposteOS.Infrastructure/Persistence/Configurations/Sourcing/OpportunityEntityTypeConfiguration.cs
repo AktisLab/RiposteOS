@@ -19,6 +19,13 @@ public sealed class OpportunityEntityTypeConfiguration : IEntityTypeConfiguratio
         builder.Property(opportunity => opportunity.SourceId).HasMaxLength(64).IsRequired();
         builder.Property(opportunity => opportunity.Title).HasMaxLength(2_000).IsRequired();
         builder.Property(opportunity => opportunity.Buyer).HasMaxLength(1_000).IsRequired();
+        builder.Property(opportunity => opportunity.Description).HasMaxLength(20_000);
+        builder.Property(opportunity => opportunity.ProcedureType).HasMaxLength(128);
+        builder.Property(opportunity => opportunity.ContractNature).HasMaxLength(128);
+        builder.Property(opportunity => opportunity.EstimatedValue).HasPrecision(19, 4);
+        builder.Property(opportunity => opportunity.Currency).HasMaxLength(3);
+        builder.Property(opportunity => opportunity.ExecutionDuration).HasColumnType("text");
+        builder.Property(opportunity => opportunity.DocumentUrl).HasMaxLength(2_000);
         builder.Property(opportunity => opportunity.MatchScore).IsRequired();
         builder.HasIndex(opportunity => opportunity.MatchScore)
             .HasDatabaseName("ix_opportunities_match_score");
@@ -30,16 +37,21 @@ public sealed class OpportunityEntityTypeConfiguration : IEntityTypeConfiguratio
             .HasDatabaseName("ix_opportunities_status");
         builder.Property(opportunity => opportunity.NoticeUrl).HasMaxLength(2_000).IsRequired();
         builder.Property(opportunity => opportunity.RawPayload).HasColumnType("jsonb").IsRequired();
+        builder.Property(opportunity => opportunity.ContentHash).HasMaxLength(64).IsRequired();
         builder.Property(opportunity => opportunity.ImportedAt)
             .HasDefaultValueSql(DatabaseFunctions.Now);
         builder.Property(opportunity => opportunity.UpdatedAt)
             .HasDefaultValueSql(DatabaseFunctions.Now);
 
+        builder.Ignore(opportunity => opportunity.CountryCodes);
         builder.Ignore(opportunity => opportunity.DepartmentCodes);
         builder.Ignore(opportunity => opportunity.CpvCodes);
         builder.Ignore(opportunity => opportunity.DescriptorCodes);
         builder.Ignore(opportunity => opportunity.DescriptorLabels);
         builder.Ignore(opportunity => opportunity.MatchReasons);
+        builder.Property<string[]>("_countryCodes")
+            .HasColumnName("CountryCodes")
+            .IsRequired();
         builder.Property<string[]>("_departmentCodes")
             .HasColumnName("DepartmentCodes")
             .IsRequired();

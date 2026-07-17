@@ -21,6 +21,14 @@ public sealed class SourcingSettingsEntityTypeConfiguration : IEntityTypeConfigu
         builder.Property(settings => settings.UrgentDeadlineDays).IsRequired();
         builder.Property(settings => settings.UrgentDeadlinePenalty).IsRequired();
         builder.Property(settings => settings.HighRelevanceThreshold).IsRequired();
+        builder.Property(settings => settings.BoampCron)
+            .HasMaxLength(100)
+            .HasDefaultValue(SourcingSettings.DefaultSynchronizationCron)
+            .IsRequired();
+        builder.Property(settings => settings.TedCron)
+            .HasMaxLength(100)
+            .HasDefaultValue(SourcingSettings.DefaultSynchronizationCron)
+            .IsRequired();
         builder.Property(settings => settings.UpdatedAt)
             .HasDefaultValueSql(DatabaseFunctions.Now);
 
@@ -28,6 +36,7 @@ public sealed class SourcingSettingsEntityTypeConfiguration : IEntityTypeConfigu
         builder.Ignore(settings => settings.ExcludedKeywords);
         builder.Ignore(settings => settings.PositiveSignals);
         builder.Ignore(settings => settings.NegativeSignals);
+        builder.Ignore(settings => settings.AllowedCountryCodes);
         builder.Ignore(settings => settings.PreferredDepartmentCodes);
         builder.Ignore(settings => settings.CpvWhitelistPrefixes);
         builder.Ignore(settings => settings.CpvWatchPrefixes);
@@ -43,6 +52,9 @@ public sealed class SourcingSettingsEntityTypeConfiguration : IEntityTypeConfigu
             .IsRequired();
         builder.Property<string[]>("_negativeSignals")
             .HasColumnName("NegativeSignals")
+            .IsRequired();
+        builder.Property<string[]>("_allowedCountryCodes")
+            .HasColumnName("AllowedCountryCodes")
             .IsRequired();
         builder.Property<string[]>("_preferredDepartmentCodes")
             .HasColumnName("PreferredDepartmentCodes")

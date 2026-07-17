@@ -221,6 +221,50 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                     b.ToTable("AspNetUserTokens", "identity");
                 });
 
+            modelBuilder.Entity("RiposteOS.Core.Sourcing.ImportIssue", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("ErrorCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("RawPayload")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("SourceId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RunId")
+                        .HasDatabaseName("ix_import_issues_run_id");
+
+                    b.ToTable("import_issues", "sourcing");
+                });
+
             modelBuilder.Entity("RiposteOS.Core.Sourcing.ImportRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -270,6 +314,9 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<int>("Unchanged")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Updated")
                         .HasColumnType("integer");
 
@@ -298,6 +345,34 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ContractNature")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)");
+
+                    b.Property<string>("DocumentUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<decimal?>("EstimatedValue")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("ExecutionDuration")
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset>("ImportedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -310,6 +385,10 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("ProcedureType")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
 
                     b.Property<DateOnly>("PublicationDate")
                         .HasColumnType("date");
@@ -345,6 +424,11 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("now()");
+
+                    b.PrimitiveCollection<string[]>("_countryCodes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("CountryCodes");
 
                     b.PrimitiveCollection<string[]>("_cpvCodes")
                         .IsRequired()
@@ -386,10 +470,47 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                     b.ToTable("opportunities", "sourcing");
                 });
 
+            modelBuilder.Entity("RiposteOS.Core.Sourcing.OpportunityRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OpportunityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RawPayload")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OpportunityId", "CreatedAt")
+                        .HasDatabaseName("ix_opportunity_revisions_opportunity_created_at");
+
+                    b.ToTable("opportunity_revisions", "sourcing");
+                });
+
             modelBuilder.Entity("RiposteOS.Core.Sourcing.SourcingSettings", b =>
                 {
                     b.Property<int>("Id")
                         .HasColumnType("integer");
+
+                    b.Property<string>("BoampCron")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasDefaultValue("0 * * * *");
 
                     b.Property<int>("CpvExclusionPenalty")
                         .HasColumnType("integer");
@@ -415,6 +536,13 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                     b.Property<int>("PreferredDepartmentBoost")
                         .HasColumnType("integer");
 
+                    b.Property<string>("TedCron")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasDefaultValue("0 * * * *");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -425,6 +553,11 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("UrgentDeadlinePenalty")
                         .HasColumnType("integer");
+
+                    b.PrimitiveCollection<string[]>("_allowedCountryCodes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("AllowedCountryCodes");
 
                     b.PrimitiveCollection<string[]>("_cpvExcludedPrefixes")
                         .IsRequired()
@@ -537,6 +670,26 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Sourcing.ImportIssue", b =>
+                {
+                    b.HasOne("RiposteOS.Core.Sourcing.ImportRun", null)
+                        .WithMany()
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Sourcing.OpportunityRevision", b =>
+                {
+                    b.HasOne("RiposteOS.Core.Sourcing.Opportunity", "Opportunity")
+                        .WithMany()
+                        .HasForeignKey("OpportunityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Opportunity");
                 });
 #pragma warning restore 612, 618
         }

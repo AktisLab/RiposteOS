@@ -30,7 +30,11 @@ public sealed class DependencyInjectionTests
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
 
-        Assert.IsType<BoampSource>(scope.ServiceProvider.GetRequiredService<IOpportunitySource>());
+        var sources = scope.ServiceProvider.GetServices<IOpportunitySource>().ToArray();
+        Assert.Collection(
+            sources,
+            source => Assert.IsType<BoampSource>(source),
+            source => Assert.IsType<TedSource>(source));
         Assert.NotNull(scope.ServiceProvider.GetService<SourcingSettingsStore>());
     }
 
@@ -50,6 +54,37 @@ public sealed class DependencyInjectionTests
             _ = provider.GetRequiredService<IOptions<BoampOptions>>().Value);
     }
 
+    [Theory]
+    [InlineData("Ted:BaseUrl", "relative")]
+    [InlineData("Ted:InitialLookbackDays", "-1")]
+    [InlineData("Ted:InitialLookbackDays", "366")]
+    [InlineData("Ted:OverlapDays", "-1")]
+    [InlineData("Ted:OverlapDays", "31")]
+    public void InvalidTedOptionsFailValidation(string key, string value)
+    {
+        var services = new ServiceCollection();
+        services.AddInfrastructure(Configuration(new Dictionary<string, string?> { [key] = value }));
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Throws<OptionsValidationException>(() =>
+            _ = provider.GetRequiredService<IOptions<TedOptions>>().Value);
+    }
+
+    [Theory]
+    [InlineData("SourcingSynchronization:Cron", "")]
+    [InlineData("SourcingSynchronization:Cron", "not-a-cron")]
+    [InlineData("SourcingSynchronization:SuccessSlaHours", "0")]
+    [InlineData("SourcingSynchronization:SuccessSlaHours", "169")]
+    public void InvalidSynchronizationOptionsFailValidation(string key, string value)
+    {
+        var services = new ServiceCollection();
+        services.AddInfrastructure(Configuration(new Dictionary<string, string?> { [key] = value }));
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Throws<OptionsValidationException>(() =>
+            _ = provider.GetRequiredService<IOptions<SourcingSynchronizationOptions>>().Value);
+    }
+
     private static IConfiguration Configuration(Dictionary<string, string?>? overrides = null)
     {
         var values = new Dictionary<string, string?>
@@ -58,6 +93,11 @@ public sealed class DependencyInjectionTests
             ["Boamp:BaseUrl"] = "https://boamp.example/api/",
             ["Boamp:InitialLookbackDays"] = "30",
             ["Boamp:OverlapDays"] = "2",
+            ["Ted:BaseUrl"] = "https://ted.example/",
+            ["Ted:InitialLookbackDays"] = "30",
+            ["Ted:OverlapDays"] = "2",
+            ["SourcingSynchronization:Cron"] = "0 * * * *",
+            ["SourcingSynchronization:SuccessSlaHours"] = "25",
         };
         if (overrides is not null)
         {

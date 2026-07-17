@@ -8,6 +8,9 @@ public interface IOpportunitySource
 
     DateOnly GetStartDate(DateOnly today, DateOnly? lastSuccessfulDate);
 
+    SourceOpportunity ParseRawOpportunity(string rawPayload) =>
+        throw new NotSupportedException($"Source '{Key}' does not support issue reprocessing.");
+
     IAsyncEnumerable<SourcingPage> ReadPagesAsync(
         SourcingSettings settings,
         DateOnly startDate,

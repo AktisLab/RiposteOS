@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
-import { Menu, X } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { X } from 'lucide-react'
+import { Logo, LogoLockup } from '@/assets/logo'
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -10,25 +10,33 @@ import {
 import { Button } from '../ui/button'
 
 export function AppTitle() {
-  const { setOpenMobile } = useSidebar()
+  const { setOpenMobile, state, isMobile } = useSidebar()
+  const isCollapsed = state === 'collapsed' && !isMobile
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <SidebarMenuButton
           size='lg'
-          className='gap-0 py-0 hover:bg-transparent active:bg-transparent'
+          className='h-12 gap-2 p-0 hover:bg-transparent active:bg-transparent'
           asChild
         >
           <div>
             <Link
               to='/'
               onClick={() => setOpenMobile(false)}
-              className='grid flex-1 text-start text-sm leading-tight'
+              aria-label='Accueil RiposteOS'
+              className='flex min-w-0 flex-1 items-center'
             >
-              <span className='truncate font-bold'>RiposteOS</span>
-              <span className='truncate text-xs'>Appels d'offres</span>
+              {isCollapsed ? (
+                <Logo className='size-8 shrink-0' aria-hidden='true' />
+              ) : (
+                <LogoLockup
+                  className='h-8 max-w-[10.5rem] shrink-0'
+                  aria-hidden='true'
+                />
+              )}
             </Link>
-            <ToggleSidebar />
+            {isMobile && <CloseSidebar />}
           </div>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -36,11 +44,7 @@ export function AppTitle() {
   )
 }
 
-function ToggleSidebar({
-  className,
-  onClick,
-  ...props
-}: React.ComponentProps<typeof Button>) {
+function CloseSidebar() {
   const { toggleSidebar } = useSidebar()
 
   return (
@@ -49,16 +53,11 @@ function ToggleSidebar({
       data-slot='sidebar-trigger'
       variant='ghost'
       size='icon'
-      className={cn('aspect-square size-8 max-md:scale-125', className)}
-      onClick={(event) => {
-        onClick?.(event)
-        toggleSidebar()
-      }}
-      {...props}
+      className='aspect-square size-8 max-md:scale-125'
+      onClick={toggleSidebar}
     >
-      <X className='md:hidden' />
-      <Menu className='max-md:hidden' />
-      <span className='sr-only'>Toggle Sidebar</span>
+      <X />
+      <span className='sr-only'>Fermer la navigation</span>
     </Button>
   )
 }

@@ -1,7 +1,13 @@
+using System.Buffers;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text.Json;
+
 namespace RiposteOS.Core.Sourcing;
 
 public sealed class Opportunity
 {
+    private string[] _countryCodes = [];
     private string[] _departmentCodes = [];
     private string[] _cpvCodes = [];
     private string[] _descriptorCodes = [];
@@ -20,6 +26,7 @@ public sealed class Opportunity
         DateTimeOffset? responseDeadline,
         string noticeUrl,
         string rawPayload,
+        string contentHash,
         DateTimeOffset importedAt,
         DateTimeOffset updatedAt)
     {
@@ -34,6 +41,7 @@ public sealed class Opportunity
         ResponseDeadline = responseDeadline;
         NoticeUrl = noticeUrl;
         RawPayload = rawPayload;
+        ContentHash = contentHash;
         ImportedAt = importedAt;
         UpdatedAt = updatedAt;
     }
@@ -45,6 +53,7 @@ public sealed class Opportunity
         string buyer,
         DateOnly publicationDate,
         DateTimeOffset? responseDeadline,
+        IEnumerable<string> countryCodes,
         IEnumerable<string> departmentCodes,
         IEnumerable<string> cpvCodes,
         IEnumerable<string> descriptorCodes,
@@ -53,27 +62,59 @@ public sealed class Opportunity
         IEnumerable<string> matchReasons,
         string noticeUrl,
         string rawPayload,
-        DateTimeOffset importedAt)
-        : this(
-            Guid.Empty,
-            SourcingSource.Normalize(source),
-            NormalizeRequired(sourceId, nameof(sourceId)),
-            NormalizeRequired(title, nameof(title)),
-            NormalizeRequired(buyer, nameof(buyer)),
-            ValidateScore(matchScore),
-            OpportunityStatus.ToQualify,
-            publicationDate,
-            responseDeadline,
-            NormalizeOptional(noticeUrl),
-            NormalizeRequired(rawPayload, nameof(rawPayload)),
-            importedAt,
-            importedAt)
+        DateTimeOffset importedAt,
+        string? description = null,
+        string? procedureType = null,
+        string? contractNature = null,
+        decimal? estimatedValue = null,
+        string? currency = null,
+        string? executionDuration = null,
+        string? documentUrl = null)
     {
+        Id = Guid.Empty;
+        Source = SourcingSource.Normalize(source);
+        SourceId = NormalizeRequired(sourceId, nameof(sourceId));
+        Title = NormalizeRequired(title, nameof(title));
+        Buyer = NormalizeRequired(buyer, nameof(buyer));
+        MatchScore = ValidateScore(matchScore);
+        Status = OpportunityStatus.ToQualify;
+        PublicationDate = publicationDate;
+        ResponseDeadline = responseDeadline;
+        _countryCodes = NormalizeValues(countryCodes, nameof(countryCodes));
         _departmentCodes = NormalizeValues(departmentCodes, nameof(departmentCodes));
         _cpvCodes = NormalizeValues(cpvCodes, nameof(cpvCodes));
         _descriptorCodes = NormalizeValues(descriptorCodes, nameof(descriptorCodes));
         _descriptorLabels = NormalizeValues(descriptorLabels, nameof(descriptorLabels));
         _matchReasons = NormalizeValues(matchReasons, nameof(matchReasons));
+        NoticeUrl = NormalizeOptional(noticeUrl);
+        Description = NormalizeNullable(description);
+        ProcedureType = NormalizeNullable(procedureType);
+        ContractNature = NormalizeNullable(contractNature);
+        EstimatedValue = ValidateEstimatedValue(estimatedValue);
+        Currency = NormalizeNullable(currency);
+        ExecutionDuration = NormalizeNullable(executionDuration);
+        DocumentUrl = NormalizeNullable(documentUrl);
+        RawPayload = NormalizeRequired(rawPayload, nameof(rawPayload));
+        ContentHash = ComputeContentHash(
+            Title,
+            Buyer,
+            PublicationDate,
+            ResponseDeadline,
+            _departmentCodes,
+            _cpvCodes,
+            _descriptorCodes,
+            _descriptorLabels,
+            Description,
+            ProcedureType,
+            ContractNature,
+            EstimatedValue,
+            Currency,
+            ExecutionDuration,
+            DocumentUrl,
+            NoticeUrl,
+            RawPayload);
+        ImportedAt = importedAt;
+        UpdatedAt = importedAt;
     }
 
     public Guid Id { get; private set; }
@@ -94,6 +135,8 @@ public sealed class Opportunity
 
     public DateTimeOffset? ResponseDeadline { get; private set; }
 
+    public IReadOnlyList<string> CountryCodes => Array.AsReadOnly(_countryCodes);
+
     public IReadOnlyList<string> DepartmentCodes => Array.AsReadOnly(_departmentCodes);
 
     public IReadOnlyList<string> CpvCodes => Array.AsReadOnly(_cpvCodes);
@@ -104,19 +147,36 @@ public sealed class Opportunity
 
     public IReadOnlyList<string> MatchReasons => Array.AsReadOnly(_matchReasons);
 
+    public string? Description { get; private set; }
+
+    public string? ProcedureType { get; private set; }
+
+    public string? ContractNature { get; private set; }
+
+    public decimal? EstimatedValue { get; private set; }
+
+    public string? Currency { get; private set; }
+
+    public string? ExecutionDuration { get; private set; }
+
+    public string? DocumentUrl { get; private set; }
+
     public string NoticeUrl { get; private set; }
 
     public string RawPayload { get; private set; }
+
+    public string ContentHash { get; private set; }
 
     public DateTimeOffset ImportedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
 
-    public void RefreshFromSource(
+    public bool RefreshFromSource(
         string title,
         string buyer,
         DateOnly publicationDate,
         DateTimeOffset? responseDeadline,
+        IEnumerable<string> countryCodes,
         IEnumerable<string> departmentCodes,
         IEnumerable<string> cpvCodes,
         IEnumerable<string> descriptorCodes,
@@ -125,27 +185,111 @@ public sealed class Opportunity
         IEnumerable<string> matchReasons,
         string noticeUrl,
         string rawPayload,
-        DateTimeOffset updatedAt)
+        DateTimeOffset updatedAt,
+        string? description = null,
+        string? procedureType = null,
+        string? contractNature = null,
+        decimal? estimatedValue = null,
+        string? currency = null,
+        string? executionDuration = null,
+        string? documentUrl = null)
     {
         if (updatedAt < ImportedAt)
         {
             throw new ArgumentOutOfRangeException(nameof(updatedAt), "The update cannot predate the import.");
         }
 
-        Title = NormalizeRequired(title, nameof(title));
-        Buyer = NormalizeRequired(buyer, nameof(buyer));
+        var normalizedTitle = NormalizeRequired(title, nameof(title));
+        var normalizedBuyer = NormalizeRequired(buyer, nameof(buyer));
+        var normalizedCountryCodes = NormalizeValues(countryCodes, nameof(countryCodes));
+        var normalizedDepartmentCodes = NormalizeValues(departmentCodes, nameof(departmentCodes));
+        var normalizedCpvCodes = NormalizeValues(cpvCodes, nameof(cpvCodes));
+        var normalizedDescriptorCodes = NormalizeValues(descriptorCodes, nameof(descriptorCodes));
+        var normalizedDescriptorLabels = NormalizeValues(descriptorLabels, nameof(descriptorLabels));
+        var normalizedMatchScore = ValidateScore(matchScore);
+        var normalizedMatchReasons = NormalizeValues(matchReasons, nameof(matchReasons));
+        var normalizedNoticeUrl = NormalizeOptional(noticeUrl);
+        var normalizedDescription = NormalizeNullable(description);
+        var normalizedProcedureType = NormalizeNullable(procedureType);
+        var normalizedContractNature = NormalizeNullable(contractNature);
+        var normalizedEstimatedValue = ValidateEstimatedValue(estimatedValue);
+        var normalizedCurrency = NormalizeNullable(currency);
+        var normalizedExecutionDuration = NormalizeNullable(executionDuration);
+        var normalizedDocumentUrl = NormalizeNullable(documentUrl);
+        var normalizedRawPayload = NormalizeRequired(rawPayload, nameof(rawPayload));
+        var contentHash = ComputeContentHash(
+            normalizedTitle,
+            normalizedBuyer,
+            publicationDate,
+            responseDeadline,
+            normalizedDepartmentCodes,
+            normalizedCpvCodes,
+            normalizedDescriptorCodes,
+            normalizedDescriptorLabels,
+            normalizedDescription,
+            normalizedProcedureType,
+            normalizedContractNature,
+            normalizedEstimatedValue,
+            normalizedCurrency,
+            normalizedExecutionDuration,
+            normalizedDocumentUrl,
+            normalizedNoticeUrl,
+            normalizedRawPayload);
+
+        var currentContentHash = GetCurrentContentHash();
+        if (string.Equals(currentContentHash, contentHash, StringComparison.Ordinal))
+        {
+            _countryCodes = normalizedCountryCodes;
+            ContentHash = currentContentHash;
+            return false;
+        }
+
+        Title = normalizedTitle;
+        Buyer = normalizedBuyer;
         PublicationDate = publicationDate;
         ResponseDeadline = responseDeadline;
-        _departmentCodes = NormalizeValues(departmentCodes, nameof(departmentCodes));
-        _cpvCodes = NormalizeValues(cpvCodes, nameof(cpvCodes));
-        _descriptorCodes = NormalizeValues(descriptorCodes, nameof(descriptorCodes));
-        _descriptorLabels = NormalizeValues(descriptorLabels, nameof(descriptorLabels));
-        MatchScore = ValidateScore(matchScore);
-        _matchReasons = NormalizeValues(matchReasons, nameof(matchReasons));
-        NoticeUrl = NormalizeOptional(noticeUrl);
-        RawPayload = NormalizeRequired(rawPayload, nameof(rawPayload));
+        _countryCodes = normalizedCountryCodes;
+        _departmentCodes = normalizedDepartmentCodes;
+        _cpvCodes = normalizedCpvCodes;
+        _descriptorCodes = normalizedDescriptorCodes;
+        _descriptorLabels = normalizedDescriptorLabels;
+        MatchScore = normalizedMatchScore;
+        _matchReasons = normalizedMatchReasons;
+        Description = normalizedDescription;
+        ProcedureType = normalizedProcedureType;
+        ContractNature = normalizedContractNature;
+        EstimatedValue = normalizedEstimatedValue;
+        Currency = normalizedCurrency;
+        ExecutionDuration = normalizedExecutionDuration;
+        DocumentUrl = normalizedDocumentUrl;
+        NoticeUrl = normalizedNoticeUrl;
+        RawPayload = normalizedRawPayload;
+        ContentHash = contentHash;
         UpdatedAt = updatedAt;
+        return true;
     }
+
+    internal string GetCurrentContentHash() =>
+        string.IsNullOrEmpty(ContentHash)
+            ? ComputeContentHash(
+                Title,
+                Buyer,
+                PublicationDate,
+                ResponseDeadline,
+                _departmentCodes,
+                _cpvCodes,
+                _descriptorCodes,
+                _descriptorLabels,
+                Description,
+                ProcedureType,
+                ContractNature,
+                EstimatedValue,
+                Currency,
+                ExecutionDuration,
+                DocumentUrl,
+                NoticeUrl,
+                RawPayload)
+            : ContentHash;
 
     public void Retain() => Status = OpportunityStatus.Retained;
 
@@ -182,6 +326,19 @@ public sealed class Opportunity
         return value.Trim();
     }
 
+    private static string? NormalizeNullable(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static decimal? ValidateEstimatedValue(decimal? value)
+    {
+        if (value < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "The estimated value cannot be negative.");
+        }
+
+        return value;
+    }
+
     private static string[] NormalizeValues(IEnumerable<string> values, string parameterName)
     {
         ArgumentNullException.ThrowIfNull(values, parameterName);
@@ -199,5 +356,125 @@ public sealed class Opportunity
         }
 
         return score;
+    }
+
+    private static string ComputeContentHash(
+        string title,
+        string buyer,
+        DateOnly publicationDate,
+        DateTimeOffset? responseDeadline,
+        string[] departmentCodes,
+        string[] cpvCodes,
+        string[] descriptorCodes,
+        string[] descriptorLabels,
+        string? description,
+        string? procedureType,
+        string? contractNature,
+        decimal? estimatedValue,
+        string? currency,
+        string? executionDuration,
+        string? documentUrl,
+        string noticeUrl,
+        string rawPayload)
+    {
+        using var payload = JsonDocument.Parse(rawPayload);
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("title", title);
+            writer.WriteString("buyer", buyer);
+            writer.WriteString(
+                "publicationDate",
+                publicationDate.ToString("O", CultureInfo.InvariantCulture));
+            if (responseDeadline is { } deadline)
+            {
+                writer.WriteString("responseDeadline", deadline);
+            }
+            else
+            {
+                writer.WriteNull("responseDeadline");
+            }
+
+            WriteSortedValues(writer, "departmentCodes", departmentCodes);
+            WriteSortedValues(writer, "cpvCodes", cpvCodes);
+            WriteSortedValues(writer, "descriptorCodes", descriptorCodes);
+            WriteSortedValues(writer, "descriptorLabels", descriptorLabels);
+            writer.WriteString("description", description);
+            writer.WriteString("procedureType", procedureType);
+            writer.WriteString("contractNature", contractNature);
+            if (estimatedValue is { } value)
+            {
+                writer.WriteNumber("estimatedValue", value);
+            }
+            else
+            {
+                writer.WriteNull("estimatedValue");
+            }
+
+            writer.WriteString("currency", currency);
+            writer.WriteString("executionDuration", executionDuration);
+            writer.WriteString("documentUrl", documentUrl);
+            writer.WriteString("noticeUrl", noticeUrl);
+            writer.WritePropertyName("rawPayload");
+            WriteCanonicalJson(writer, payload.RootElement);
+            writer.WriteEndObject();
+        }
+
+        return Convert.ToHexString(SHA256.HashData(buffer.WrittenSpan)).ToLowerInvariant();
+    }
+
+    private static void WriteSortedValues(Utf8JsonWriter writer, string propertyName, string[] values)
+    {
+        writer.WriteStartArray(propertyName);
+        foreach (var value in values.Order(StringComparer.Ordinal))
+        {
+            writer.WriteStringValue(value);
+        }
+
+        writer.WriteEndArray();
+    }
+
+    private static void WriteCanonicalJson(Utf8JsonWriter writer, JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (var property in element.EnumerateObject().OrderBy(item => item.Name, StringComparer.Ordinal))
+                {
+                    writer.WritePropertyName(property.Name);
+                    WriteCanonicalJson(writer, property.Value);
+                }
+
+                writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (var item in element.EnumerateArray())
+                {
+                    WriteCanonicalJson(writer, item);
+                }
+
+                writer.WriteEndArray();
+                break;
+            case JsonValueKind.String:
+                writer.WriteStringValue(element.GetString());
+                break;
+            case JsonValueKind.Number:
+                writer.WriteRawValue(element.GetRawText());
+                break;
+            case JsonValueKind.True:
+                writer.WriteBooleanValue(true);
+                break;
+            case JsonValueKind.False:
+                writer.WriteBooleanValue(false);
+                break;
+            case JsonValueKind.Null:
+                writer.WriteNullValue();
+                break;
+            default:
+                throw new JsonException("Unsupported JSON value in an opportunity payload.");
+        }
     }
 }

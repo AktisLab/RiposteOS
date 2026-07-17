@@ -12,9 +12,16 @@ public static partial class SourcingMapper
     public static partial OpportunityListItem[] ToOpportunityListItems(
         IEnumerable<Opportunity> opportunities);
 
+    [MapProperty(nameof(ImportRun.Updated), nameof(ImportRunResponse.Changed))]
     public static partial ImportRunResponse ToImportRunResponse(ImportRun run);
 
+    [MapProperty(nameof(ImportRun.Updated), nameof(ImportRunResponse.Changed))]
     public static partial ImportRunResponse[] ToImportRunResponses(IEnumerable<ImportRun> runs);
+
+    [MapperIgnoreSource(nameof(ImportIssue.RawPayload))]
+    public static partial ImportIssueResponse ToImportIssueResponse(ImportIssue issue);
+
+    public static partial ImportIssueResponse[] ToImportIssueResponses(IEnumerable<ImportIssue> issues);
 
     public static partial SourcingSettingsResponse ToSourcingSettingsResponse(SourcingSettings settings);
 

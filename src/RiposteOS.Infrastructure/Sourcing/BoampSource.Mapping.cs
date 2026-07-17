@@ -5,18 +5,43 @@ namespace RiposteOS.Infrastructure.Sourcing;
 
 public sealed partial class BoampSource
 {
-    private static SourceOpportunity MapOpportunity(JsonElement record) => new(
-        GetRequiredString(record, "idweb"),
-        GetRequiredString(record, "objet"),
-        GetString(record, "nomacheteur") ?? "Acheteur non renseigné",
-        DateOnly.Parse(GetRequiredString(record, "dateparution"), CultureInfo.InvariantCulture),
-        GetDateTimeOffset(record, "datelimitereponse"),
-        GetStrings(record, "code_departement_prestation", "code_departement"),
-        GetCpvCodes(record),
-        GetStrings(record, "descripteur_code"),
-        GetStrings(record, "descripteur_libelle"),
-        GetString(record, "url_avis") ?? string.Empty,
-        record.GetRawText());
+    private static SourceOpportunity MapOpportunity(JsonElement record)
+    {
+        using var data = GetString(record, "donnees") is { } rawData
+            ? JsonDocument.Parse(rawData)
+            : null;
+        var root = data?.RootElement;
+        var estimatedAmount = root is { } value ? GetEstimatedAmount(value) : null;
+
+        return new SourceOpportunity(
+            GetRequiredString(record, "idweb"),
+            GetRequiredString(record, "objet"),
+            GetString(record, "nomacheteur") ?? "Acheteur non renseigné",
+            DateOnly.Parse(GetRequiredString(record, "dateparution"), CultureInfo.InvariantCulture),
+            GetDateTimeOffset(record, "datelimitereponse"),
+            [FranceCountryCode],
+            GetStrings(record, "code_departement_prestation", "code_departement"),
+            root is { } cpvRoot ? GetCpvCodes(cpvRoot) : [],
+            GetStrings(record, "descripteur_code"),
+            GetStrings(record, "descripteur_libelle"),
+            GetString(record, "url_avis") ?? string.Empty,
+            record.GetRawText(),
+            Description: root is { } descriptionRoot ? GetDescription(descriptionRoot) : null,
+            ProcedureType: root is { } procedureRoot
+                ? FindCodeListValue(procedureRoot, "procurement-procedure-type")
+                    ?? GetString(record, "procedure_libelle")
+                : GetString(record, "procedure_libelle"),
+            ContractNature: root is { } natureRoot
+                ? FindCodeListValue(natureRoot, "contract-nature")
+                    ?? GetString(record, "nature_libelle")
+                : GetString(record, "nature_libelle"),
+            EstimatedValue: GetDecimalText(estimatedAmount),
+            Currency: estimatedAmount is { } amount
+                ? GetAttribute(amount, "@currencyID") ?? GetAttribute(amount, "@devise")
+                : null,
+            ExecutionDuration: root is { } durationRoot ? GetDuration(durationRoot) : null,
+            DocumentUrl: root is { } documentRoot ? GetDocumentUrl(documentRoot) : null);
+    }
 
     private static string GetRequiredString(JsonElement record, string propertyName) =>
         GetString(record, propertyName)
@@ -62,17 +87,196 @@ public sealed partial class BoampSource
         return [];
     }
 
-    private static string[] GetCpvCodes(JsonElement record)
+    private static string[] GetCpvCodes(JsonElement root)
     {
-        if (GetString(record, "donnees") is not { } data)
+        var codes = new HashSet<string>(StringComparer.Ordinal);
+        CollectCpvCodes(root, codes);
+        return [.. codes];
+    }
+
+    private static string? GetScopedText(
+        JsonElement root,
+        string containerName,
+        string propertyName)
+    {
+        var container = FindFirstProperty(root, containerName);
+        return container is { } value
+            ? GetText(FindFirstProperty(value, propertyName))
+            : null;
+    }
+
+    private static string? GetDescription(JsonElement root) =>
+        GetScopedText(root, "cac:ProcurementProject", "cbc:Description")
+        ?? GetText(FindPath(root, "FNSimple", "initial", "natureMarche", "description"))
+        ?? GetText(FindPath(root, "FNSimple", "rectificatif", "natureMarche", "description"))
+        ?? GetText(FindPath(root, "FNSimple", "attribution", "natureMarche", "description"))
+        ?? GetText(FindPath(root, "MAPA", "initial", "description", "objet"))
+        ?? GetText(FindPath(root, "MAPA", "rectificatif", "description", "objet"))
+        ?? GetText(FindPath(root, "MAPA", "attribution", "descriptionReduite", "objet"));
+
+    private static JsonElement? GetEstimatedAmount(JsonElement root) =>
+        FindPath(
+            root,
+            "EFORMS",
+            "ContractNotice",
+            "cac:ProcurementProject",
+            "cac:RequestedTenderTotal",
+            "cbc:EstimatedOverallContractAmount")
+        ?? FindPath(root, "FNSimple", "initial", "natureMarche", "valeurEstimee")
+        ?? FindPath(root, "FNSimple", "rectificatif", "natureMarche", "valeurEstimee");
+
+    private static string? GetDocumentUrl(JsonElement root) =>
+        GetScopedText(root, "cac:CallForTendersDocumentReference", "cbc:URI")
+        ?? GetText(FindPath(root, "FNSimple", "initial", "communication", "urlDocConsul"))
+        ?? GetText(FindPath(root, "FNSimple", "rectificatif", "communication", "urlDocConsul"))
+        ?? GetText(FindPath(root, "FNSimple", "initial", "communication", "urlProfilAch"))
+        ?? GetText(FindPath(root, "FNSimple", "rectificatif", "communication", "urlProfilAch"))
+        ?? GetText(FindFirstProperty(root, "urlProfilAcheteur"));
+
+    private static JsonElement? FindPath(JsonElement root, params string[] propertyNames)
+    {
+        var current = root;
+        foreach (var propertyName in propertyNames)
         {
-            return [];
+            if (current.ValueKind != JsonValueKind.Object
+                || !current.TryGetProperty(propertyName, out current))
+            {
+                return null;
+            }
         }
 
-        using var document = JsonDocument.Parse(data);
-        var codes = new HashSet<string>(StringComparer.Ordinal);
-        CollectCpvCodes(document.RootElement, codes);
-        return [.. codes];
+        return current;
+    }
+
+    private static string? FindCodeListValue(JsonElement root, string listName)
+    {
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+            if (GetAttribute(root, "@listName") is { } name
+                && string.Equals(name, listName, StringComparison.OrdinalIgnoreCase))
+            {
+                return GetText(root);
+            }
+
+            foreach (var property in root.EnumerateObject())
+            {
+                if (FindCodeListValue(property.Value, listName) is { } value)
+                {
+                    return value;
+                }
+            }
+        }
+        else if (root.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in root.EnumerateArray())
+            {
+                if (FindCodeListValue(item, listName) is { } value)
+                {
+                    return value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static JsonElement? FindFirstProperty(JsonElement root, string propertyName)
+    {
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+            if (root.TryGetProperty(propertyName, out var value))
+            {
+                return value;
+            }
+
+            foreach (var property in root.EnumerateObject())
+            {
+                if (FindFirstProperty(property.Value, propertyName) is { } nested)
+                {
+                    return nested;
+                }
+            }
+        }
+        else if (root.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in root.EnumerateArray())
+            {
+                if (FindFirstProperty(item, propertyName) is { } nested)
+                {
+                    return nested;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static string? GetText(JsonElement? element)
+    {
+        if (element is not { } value)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            return value.GetString();
+        }
+
+        return value.ValueKind == JsonValueKind.Object
+            && value.TryGetProperty("#text", out var text)
+            && text.ValueKind == JsonValueKind.String
+                ? text.GetString()
+                : null;
+    }
+
+    private static string? GetAttribute(JsonElement element, string attributeName) =>
+        element.ValueKind == JsonValueKind.Object
+        && element.TryGetProperty(attributeName, out var attribute)
+        && attribute.ValueKind == JsonValueKind.String
+            ? attribute.GetString()
+            : null;
+
+    private static decimal? GetDecimalText(JsonElement? element) =>
+        decimal.TryParse(
+            element is { } value && value.ValueKind == JsonValueKind.Object
+                ? GetText(FindPath(value, "valeur")) ?? GetText(value)
+                : GetText(element),
+            NumberStyles.Number,
+            CultureInfo.InvariantCulture,
+            out var amount)
+                ? amount
+                : null;
+
+    private static string? GetDuration(JsonElement root)
+    {
+        var lot = FindFirstProperty(root, "cac:ProcurementProjectLot");
+        var singleLot = lot is { ValueKind: JsonValueKind.Array } lots
+            ? lots.GetArrayLength() == 1 ? lots[0] : (JsonElement?)null
+            : lot;
+        var plannedPeriod = singleLot is { } lotValue
+            ? FindFirstProperty(lotValue, "cac:PlannedPeriod")
+            : null;
+        var duration = plannedPeriod is { } period
+            ? FindFirstProperty(period, "cbc:DurationMeasure")
+            : null;
+        if (duration is { } measure && GetText(duration) is { } value)
+        {
+            var unit = GetAttribute(measure, "@unitCode");
+            return unit is null ? value : $"{value} {unit}";
+        }
+
+        var months = GetText(FindPath(root, "FNSimple", "initial", "natureMarche", "dureeMois"))
+            ?? GetText(FindPath(root, "FNSimple", "rectificatif", "natureMarche", "dureeMois"))
+            ?? GetText(FindPath(root, "MAPA", "initial", "duree", "nbMois"))
+            ?? GetText(FindPath(root, "MAPA", "rectificatif", "duree", "nbMois"));
+        if (months is not null)
+        {
+            return $"{months} MONTH";
+        }
+
+        return GetText(FindPath(root, "MAPA", "initial", "duree", "txtLibre"))
+            ?? GetText(FindPath(root, "MAPA", "rectificatif", "duree", "txtLibre"));
     }
 
     private static void CollectCpvCodes(JsonElement element, HashSet<string> codes)

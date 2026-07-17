@@ -51,7 +51,7 @@ test('omits empty filters and keeps descending order explicit', () => {
       buyer: '',
       department: '',
       cpv: '',
-      sort: 'publicationDate',
+      sort: 'matchScore',
       direction: 'desc',
     },
     0,
@@ -59,5 +59,5 @@ test('omits empty filters and keeps descending order explicit', () => {
   )
 
   assert.equal(query.filter, undefined)
-  assert.equal(query.orderBy, 'publicationDate desc')
+  assert.equal(query.orderBy, 'matchScore desc')
 })

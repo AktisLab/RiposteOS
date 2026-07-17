@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Infrastructure.Persistence;
 
@@ -27,17 +29,29 @@ public sealed class OpportunityImporter(
 
         await foreach (var page in source.ReadPagesAsync(settings, startDate, today, cancellationToken))
         {
-            var (created, updated) = await UpsertAsync(
+            var (created, changed, unchanged) = await UpsertAsync(
                 source.Key,
                 page.Opportunities,
                 settings,
                 cancellationToken);
+            foreach (var issue in page.Issues ?? [])
+            {
+                dbContext.Set<ImportIssue>().Add(new ImportIssue(
+                    command.RunId,
+                    source.Key,
+                    issue.SourceId,
+                    issue.ErrorCode,
+                    issue.RawPayload,
+                    timeProvider.GetUtcNow()));
+            }
+
             await runStore.AddProgressAsync(
                 command.RunId,
                 page.PublicationDate,
                 page.Fetched,
                 created,
-                updated,
+                changed,
+                unchanged,
                 page.Skipped,
                 cancellationToken);
             dbContext.ChangeTracker.Clear();
@@ -55,16 +69,58 @@ public sealed class OpportunityImporter(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<ImportIssueRetryResult?> RetryIssueAsync(
+        Guid issueId,
+        CancellationToken cancellationToken)
+    {
+        var issue = await dbContext.Set<ImportIssue>()
+            .SingleOrDefaultAsync(item => item.Id == issueId, cancellationToken);
+        if (issue is null)
+        {
+            return null;
+        }
+
+        if (issue.ResolvedAt is not null)
+        {
+            return new ImportIssueRetryResult(issue, true);
+        }
+
+        var source = GetSource(issue.Source);
+        SourceOpportunity opportunity;
+        try
+        {
+            opportunity = source.ParseRawOpportunity(issue.RawPayload);
+        }
+        catch (JsonException)
+        {
+            return new ImportIssueRetryResult(issue, false);
+        }
+        catch (FormatException)
+        {
+            return new ImportIssueRetryResult(issue, false);
+        }
+
+        var settings = await settingsStore.GetAsync(cancellationToken)
+            ?? throw new InvalidOperationException(
+                "A sourcing profile is required before an import issue can be retried.");
+        await UpsertAsync(source.Key, [opportunity], settings, cancellationToken);
+        issue.Resolve(timeProvider.GetUtcNow());
+        dbContext.Set<ImportIssue>().Update(issue);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new ImportIssueRetryResult(issue, true);
+    }
+
     private IOpportunitySource GetSource(string key) =>
         sources.SingleOrDefault(source =>
             string.Equals(source.Key, key, StringComparison.OrdinalIgnoreCase))
         ?? throw new NotSupportedException($"Sourcing source '{key}' is not registered.");
 
-    private async Task<(int Created, int Updated)> UpsertAsync(
+    private async Task<(int Created, int Changed, int Unchanged)> UpsertAsync(
         string source,
         IReadOnlyList<SourceOpportunity> opportunities,
         SourcingSettings settings,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retryOnConflict = true)
     {
         var uniqueOpportunities = opportunities
             .GroupBy(opportunity => opportunity.SourceId, StringComparer.Ordinal)
@@ -76,7 +132,8 @@ public sealed class OpportunityImporter(
             .ToDictionaryAsync(opportunity => opportunity.SourceId, cancellationToken);
         var now = timeProvider.GetUtcNow();
         var created = 0;
-        var updated = 0;
+        var changed = 0;
+        var unchanged = 0;
 
         foreach (var sourceOpportunity in uniqueOpportunities)
         {
@@ -90,11 +147,13 @@ public sealed class OpportunityImporter(
                 now);
             if (existing.TryGetValue(sourceOpportunity.SourceId, out var opportunity))
             {
-                opportunity.RefreshFromSource(
+                var previousRevision = new OpportunityRevision(opportunity, now);
+                if (!opportunity.RefreshFromSource(
                     sourceOpportunity.Title,
                     sourceOpportunity.Buyer,
                     sourceOpportunity.PublicationDate,
                     sourceOpportunity.ResponseDeadline,
+                    sourceOpportunity.CountryCodes,
                     sourceOpportunity.DepartmentCodes,
                     sourceOpportunity.CpvCodes,
                     sourceOpportunity.DescriptorCodes,
@@ -103,18 +162,38 @@ public sealed class OpportunityImporter(
                     match.Reasons,
                     sourceOpportunity.NoticeUrl,
                     sourceOpportunity.RawPayload,
-                    now);
-                updated++;
+                    now,
+                    sourceOpportunity.Description,
+                    sourceOpportunity.ProcedureType,
+                    sourceOpportunity.ContractNature,
+                    sourceOpportunity.EstimatedValue,
+                    sourceOpportunity.Currency,
+                    sourceOpportunity.ExecutionDuration,
+                    sourceOpportunity.DocumentUrl))
+                {
+                    if (opportunity.MatchScore != match.Score
+                        || !opportunity.MatchReasons.SequenceEqual(match.Reasons, StringComparer.Ordinal))
+                    {
+                        opportunity.ReassessMatch(match.Score, match.Reasons, now);
+                    }
+
+                    unchanged++;
+                    continue;
+                }
+
+                dbContext.Set<OpportunityRevision>().Add(previousRevision);
+                changed++;
                 continue;
             }
 
-            dbContext.Set<Opportunity>().Add(new Opportunity(
+            var createdOpportunity = new Opportunity(
                 source,
                 sourceOpportunity.SourceId,
                 sourceOpportunity.Title,
                 sourceOpportunity.Buyer,
                 sourceOpportunity.PublicationDate,
                 sourceOpportunity.ResponseDeadline,
+                sourceOpportunity.CountryCodes,
                 sourceOpportunity.DepartmentCodes,
                 sourceOpportunity.CpvCodes,
                 sourceOpportunity.DescriptorCodes,
@@ -123,11 +202,37 @@ public sealed class OpportunityImporter(
                 match.Reasons,
                 sourceOpportunity.NoticeUrl,
                 sourceOpportunity.RawPayload,
-                now));
+                now,
+                sourceOpportunity.Description,
+                sourceOpportunity.ProcedureType,
+                sourceOpportunity.ContractNature,
+                sourceOpportunity.EstimatedValue,
+                sourceOpportunity.Currency,
+                sourceOpportunity.ExecutionDuration,
+                sourceOpportunity.DocumentUrl);
+            dbContext.Set<Opportunity>().Add(createdOpportunity);
             created++;
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return (created, updated);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return (created, changed, unchanged);
+        }
+        catch (DbUpdateException exception) when (
+            retryOnConflict
+            && exception.InnerException is PostgresException
+            {
+                SqlState: PostgresErrorCodes.UniqueViolation,
+            })
+        {
+            dbContext.ChangeTracker.Clear();
+            return await UpsertAsync(
+                source,
+                opportunities,
+                settings,
+                cancellationToken,
+                retryOnConflict: false);
+        }
     }
 }

@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && tsc -b",
-    "test": "node --test src/features/opportunities/gridify.test.ts src/features/opportunities/match-reason.test.ts src/lib/cpv-catalog.test.ts",
+    "test": "node --test src/features/opportunities/gridify.test.ts src/features/opportunities/match-reason.test.ts src/features/opportunities/opportunity-presentation.test.ts src/features/settings/country-codes.test.ts src/features/settings/sourcing-schedule.test.ts src/lib/cpv-catalog.test.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "format:check": "prettier --check .",
@@ -46,6 +46,7 @@
     "date-fns": "^4.1.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^1.8.0",
+    "motion": "^12.42.2",
     "react": "^19.2.5",
     "react-day-picker": "9.14.0",
     "react-dom": "^19.2.5",

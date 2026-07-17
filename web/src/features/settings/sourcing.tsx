@@ -19,20 +19,19 @@ export function SourcingSettings() {
           to='/settings'
           className='inline-flex w-fit items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none'
         >
-          <ChevronLeft className='size-4' />
+          <ChevronLeft aria-hidden='true' className='size-4' />
           Tous les paramètres
         </Link>
         <div className='flex items-start gap-4'>
-          <span className='mt-1 flex size-11 shrink-0 items-center justify-center rounded-lg border bg-card text-emerald-700 dark:text-emerald-400'>
-            <Radar className='size-5' />
+          <span className='mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'>
+            <Radar aria-hidden='true' className='size-5' />
           </span>
           <div className='space-y-1.5'>
-            <h1 className='text-3xl font-bold tracking-tight'>
+            <h1 className='text-2xl font-bold tracking-tight md:text-3xl'>
               Paramètres de sourcing
             </h1>
             <p className='max-w-2xl text-pretty text-muted-foreground'>
-              Définissez les avis collectés et la manière dont leur pertinence
-              est calculée.
+              Adaptez le sourcing à votre activité.
             </p>
           </div>
         </div>
@@ -53,8 +52,8 @@ export function SourcingSettings() {
         </StateMessage>
       ) : settingsQuery.data === null ? (
         <StateMessage icon={<Radar />} className='rounded-xl border'>
-          Aucun profil de sourcing n’est encore configuré. Il sera créé lors
-          de l’onboarding.
+          Aucun profil de sourcing n’est encore configuré. Il sera créé lors de
+          l’onboarding.
         </StateMessage>
       ) : (
         <SourcingSettingsForm

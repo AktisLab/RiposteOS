@@ -5,6 +5,7 @@ public sealed record SourcingSettingsResponse(
     string[] ExcludedKeywords,
     string[] PositiveSignals,
     string[] NegativeSignals,
+    string[] AllowedCountryCodes,
     string[] PreferredDepartmentCodes,
     string[] CpvWhitelistPrefixes,
     string[] CpvWatchPrefixes,
@@ -19,4 +20,6 @@ public sealed record SourcingSettingsResponse(
     int UrgentDeadlineDays,
     int UrgentDeadlinePenalty,
     int HighRelevanceThreshold,
+    string BoampCron,
+    string TedCron,
     DateTimeOffset UpdatedAt);

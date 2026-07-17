@@ -32,6 +32,16 @@ public sealed class SourcingSettingsStore(
             .ToArrayAsync(cancellationToken);
         foreach (var opportunity in opportunities)
         {
+            if (settings.AllowedCountryCodes.Count > 0
+                && !opportunity.CountryCodes.Any(country =>
+                    settings.AllowedCountryCodes.Contains(
+                        country,
+                        StringComparer.OrdinalIgnoreCase)))
+            {
+                dbContext.Remove(opportunity);
+                continue;
+            }
+
             var match = SourcingMatcher.Evaluate(
                 settings,
                 opportunity.Title,

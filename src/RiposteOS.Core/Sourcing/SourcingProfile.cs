@@ -5,6 +5,7 @@ public sealed record SourcingProfile(
     IReadOnlyCollection<string> ExcludedKeywords,
     IReadOnlyCollection<string> PositiveSignals,
     IReadOnlyCollection<string> NegativeSignals,
+    IReadOnlyCollection<string> AllowedCountryCodes,
     IReadOnlyCollection<string> PreferredDepartmentCodes,
     IReadOnlyCollection<string> CpvWhitelistPrefixes,
     IReadOnlyCollection<string> CpvWatchPrefixes,
@@ -18,4 +19,6 @@ public sealed record SourcingProfile(
     int CpvExclusionPenalty,
     int UrgentDeadlineDays,
     int UrgentDeadlinePenalty,
-    int HighRelevanceThreshold);
+    int HighRelevanceThreshold,
+    string BoampCron,
+    string TedCron);

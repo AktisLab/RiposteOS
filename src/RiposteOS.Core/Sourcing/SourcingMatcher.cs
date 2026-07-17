@@ -1,7 +1,36 @@
+using System.Globalization;
+using System.Text;
+
 namespace RiposteOS.Core.Sourcing;
 
 public static class SourcingMatcher
 {
+    private static readonly string[] AmbiguousPositiveSignals =
+        ["api", "conception et realisation", "conception realisation"];
+
+    private static readonly string[] DigitalContextSignals =
+    [
+        "application",
+        "applicatif",
+        "data",
+        "donnees",
+        "developpement",
+        "digital",
+        "extranet",
+        "informatique",
+        "intranet",
+        "logiciel",
+        "numerique",
+        "plateforme",
+        "portail",
+        "rgaa",
+        "site internet",
+        "site web",
+        "ux",
+        "web",
+        "workflow",
+    ];
+
     public static SourcingMatch Evaluate(
         SourcingSettings settings,
         string title,
@@ -19,17 +48,24 @@ public static class SourcingMatcher
 
         var reasons = new List<string>();
         var score = 0;
-        var searchableText = string.Join(' ', descriptorLabels.Prepend(title));
+        var searchableText = NormalizeForMatching(string.Join(' ', descriptorLabels.Prepend(title)));
+        var hasDigitalContext = DigitalContextSignals.Any(signal => ContainsSignal(searchableText, signal))
+            || settings.PositiveSignals.Any(signal =>
+                !IsAmbiguousPositiveSignal(signal) && ContainsSignal(searchableText, signal))
+            || FindCpv(cpvCodes, settings.CpvWhitelistPrefixes) is not null
+            || FindCpv(cpvCodes, settings.CpvWatchPrefixes) is not null;
 
         foreach (var signal in settings.PositiveSignals.Where(signal =>
-                     searchableText.Contains(signal, StringComparison.OrdinalIgnoreCase)))
+                     ContainsSignal(searchableText, signal)
+                     && (!IsAmbiguousPositiveSignal(signal)
+                         || hasDigitalContext)))
         {
             score += settings.PositiveSignalWeight;
             reasons.Add($"+{settings.PositiveSignalWeight} Signal positif : {signal}");
         }
 
         foreach (var signal in settings.NegativeSignals.Where(signal =>
-                     searchableText.Contains(signal, StringComparison.OrdinalIgnoreCase)))
+                     ContainsSignal(searchableText, signal)))
         {
             score -= settings.NegativeSignalPenalty;
             reasons.Add($"-{settings.NegativeSignalPenalty} Signal négatif : {signal}");
@@ -89,4 +125,47 @@ public static class SourcingMatcher
         IEnumerable<string> prefixes) =>
         cpvCodes.FirstOrDefault(code => prefixes.Any(prefix =>
             code.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)));
+
+    private static bool ContainsSignal(string normalizedText, string signal)
+    {
+        var normalizedSignal = NormalizeForMatching(signal);
+        return normalizedSignal.Length > 0
+            && $" {normalizedText} ".Contains($" {normalizedSignal} ", StringComparison.Ordinal);
+    }
+
+    private static bool IsAmbiguousPositiveSignal(string signal) =>
+        AmbiguousPositiveSignals.Contains(NormalizeForMatching(signal), StringComparer.Ordinal);
+
+    private static string NormalizeForMatching(string value)
+    {
+        var result = new StringBuilder(value.Length);
+        var needsSeparator = false;
+
+        foreach (var rune in value.Normalize(NormalizationForm.FormD).EnumerateRunes())
+        {
+            if (Rune.GetUnicodeCategory(rune) is UnicodeCategory.NonSpacingMark
+                or UnicodeCategory.SpacingCombiningMark
+                or UnicodeCategory.EnclosingMark)
+            {
+                continue;
+            }
+
+            if (Rune.IsLetterOrDigit(rune))
+            {
+                if (needsSeparator && result.Length > 0)
+                {
+                    result.Append(' ');
+                }
+
+                result.Append(Rune.ToLowerInvariant(rune));
+                needsSeparator = false;
+            }
+            else
+            {
+                needsSeparator = true;
+            }
+        }
+
+        return result.ToString();
+    }
 }

@@ -14,9 +14,16 @@
     <Compile Update="Sourcing/SourcingFacade.Contracts.cs">
       <DependentUpon>SourcingFacade.cs</DependentUpon>
     </Compile>
+    <Compile Update="Sourcing/TedSource.Contracts.cs">
+      <DependentUpon>TedSource.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Sourcing/TedSource.Mapping.cs">
+      <DependentUpon>TedSource.cs</DependentUpon>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Cronos" />
     <PackageReference Include="Gridify.EntityFramework" />
     <PackageReference Include="Hangfire.AspNetCore" />
     <PackageReference Include="Hangfire.Core" />

@@ -14,15 +14,21 @@ public sealed class SourcingSettingsTests
         var profile = TestSourcingProfiles.Create([" logiciel ", "LOGICIEL"], [" porte "])
             with
         {
+            AllowedCountryCodes = [" fra ", "FRA", "bel"],
             PreferredDepartmentCodes = [" 2a ", "69"],
             CpvWhitelistPrefixes = [" 722 "],
+            BoampCron = " 5 * * * * ",
+            TedCron = "0 */6 * * *",
         };
         var settings = new SourcingSettings(profile, UpdatedAt);
 
         Assert.Equal(["logiciel"], settings.Keywords);
         Assert.Equal(["porte"], settings.ExcludedKeywords);
+        Assert.Equal(["FRA", "BEL"], settings.AllowedCountryCodes);
         Assert.Equal(["2A", "69"], settings.PreferredDepartmentCodes);
         Assert.Equal(["722"], settings.CpvWhitelistPrefixes);
+        Assert.Equal("5 * * * *", settings.BoampCron);
+        Assert.Equal("0 */6 * * *", settings.TedCron);
         Assert.IsNotType<string[]>(settings.Keywords);
         Assert.Equal(20, settings.PageSize);
         Assert.Equal(35, settings.HighRelevanceThreshold);
@@ -55,8 +61,12 @@ public sealed class SourcingSettingsTests
         TestSourcingProfiles.Create([""]),
         TestSourcingProfiles.Create([new string('a', 101)]),
         TestSourcingProfiles.Create() with { PreferredDepartmentCodes = ["1234"] },
+        TestSourcingProfiles.Create() with { AllowedCountryCodes = ["FR"] },
+        TestSourcingProfiles.Create() with { AllowedCountryCodes = ["F1A"] },
         TestSourcingProfiles.Create() with { CpvWhitelistPrefixes = ["abc"] },
         TestSourcingProfiles.Create() with { PositiveSignalWeight = 101 },
         TestSourcingProfiles.Create() with { UrgentDeadlineDays = 366 },
+        TestSourcingProfiles.Create() with { BoampCron = "" },
+        TestSourcingProfiles.Create() with { TedCron = new string('a', 101) },
     };
 }

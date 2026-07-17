@@ -12,7 +12,9 @@ public sealed class SourcingFacade(
     IEnumerable<IOpportunitySource> sources,
     SourcingSettingsStore settingsStore,
     ImportRunStore runStore,
-    IBackgroundJobClient jobClient)
+    OpportunityImporter importer,
+    IBackgroundJobClient jobClient,
+    IRecurringJobManager recurringJobs)
 {
     private static readonly OpportunityGridifyMapper OpportunityMapper = new();
     private static readonly ImportRunGridifyMapper ImportRunMapper = new();
@@ -35,7 +37,7 @@ public sealed class SourcingFacade(
             pageSize,
             filter,
             string.IsNullOrWhiteSpace(orderBy)
-                ? "publicationDate desc,responseDeadline,id"
+                ? "matchScore desc,publicationDate desc,id"
                 : $"{orderBy},id");
         if (!query.IsValid(OpportunityMapper))
         {
@@ -151,6 +153,34 @@ public sealed class SourcingFacade(
             .AsNoTracking()
             .SingleOrDefaultAsync(run => run.Id == id, cancellationToken);
 
+    public async Task<ImportIssuePageResult> ListImportIssuesAsync(
+        Guid runId,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(pageSize, 100);
+
+        var query = dbContext.Set<ImportIssue>()
+            .AsNoTracking()
+            .Where(issue => issue.RunId == runId);
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(issue => issue.CreatedAt)
+            .ThenBy(issue => issue.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToArrayAsync(cancellationToken);
+        return new ImportIssuePageResult(items, totalCount);
+    }
+
+    public Task<ImportIssueRetryResult?> RetryImportIssueAsync(
+        Guid issueId,
+        CancellationToken cancellationToken) =>
+        importer.RetryIssueAsync(issueId, cancellationToken);
+
     public Task<SourcingSettings?> GetSettingsAsync(CancellationToken cancellationToken) =>
         settingsStore.GetAsync(cancellationToken);
 
@@ -169,7 +199,13 @@ public sealed class SourcingFacade(
             return null;
         }
 
-        return await settingsStore.UpdateAsync(profile, cancellationToken);
+        var settings = await settingsStore.UpdateAsync(profile, cancellationToken);
+        SourcingRecurringJobRegistrar.Register(
+            recurringJobs,
+            sources,
+            settings,
+            SourcingSettings.DefaultSynchronizationCron);
+        return settings;
     }
 
     public async Task<Opportunity?> UpdateOpportunityStatusAsync(

@@ -14,6 +14,7 @@ public sealed class ImportRun
         int fetched,
         int created,
         int updated,
+        int unchanged,
         int skipped,
         string? errorMessage)
     {
@@ -28,6 +29,7 @@ public sealed class ImportRun
         Fetched = fetched;
         Created = created;
         Updated = updated;
+        Unchanged = unchanged;
         Skipped = skipped;
         ErrorMessage = errorMessage;
     }
@@ -42,6 +44,7 @@ public sealed class ImportRun
             null,
             queuedAt,
             null,
+            0,
             0,
             0,
             0,
@@ -71,6 +74,8 @@ public sealed class ImportRun
     public int Created { get; private set; }
 
     public int Updated { get; private set; }
+
+    public int Unchanged { get; private set; }
 
     public int Skipped { get; private set; }
 
@@ -102,6 +107,7 @@ public sealed class ImportRun
         int fetched,
         int created,
         int updated,
+        int unchanged,
         int skipped,
         DateTimeOffset heartbeatAt)
     {
@@ -110,12 +116,12 @@ public sealed class ImportRun
             throw new InvalidOperationException("Progress can only be recorded for a running import.");
         }
 
-        if (fetched < 0 || created < 0 || updated < 0 || skipped < 0)
+        if (fetched < 0 || created < 0 || updated < 0 || unchanged < 0 || skipped < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(fetched), "Progress counters cannot be negative.");
         }
 
-        if (created + updated + skipped > fetched)
+        if (created + updated + unchanged + skipped > fetched)
         {
             throw new ArgumentException("Processed counters cannot exceed fetched records.", nameof(fetched));
         }
@@ -125,6 +131,7 @@ public sealed class ImportRun
         Fetched += fetched;
         Created += created;
         Updated += updated;
+        Unchanged += unchanged;
         Skipped += skipped;
         LastHeartbeatAt = heartbeatAt;
     }

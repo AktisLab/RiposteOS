@@ -40,10 +40,6 @@ export function SettingsOverview() {
           </Link>
         </div>
 
-        <p className='mt-4 text-sm text-muted-foreground'>
-          Les prochains domaines de configuration apparaîtront ici lorsqu’ils
-          seront disponibles.
-        </p>
       </section>
     </>
   )

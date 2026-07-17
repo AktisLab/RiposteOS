@@ -4,4 +4,5 @@ public sealed record SourcingPage(
     DateOnly PublicationDate,
     int Fetched,
     IReadOnlyList<SourceOpportunity> Opportunities,
-    int Skipped);
+    int Skipped,
+    IReadOnlyList<SourceImportIssue>? Issues = null);
