@@ -51,8 +51,8 @@ cp .env.example .env
 make dev
 ```
 
-La stack démarre PostgreSQL, applique les migrations, puis lance l'API, le
-worker et l'application web.
+La stack démarre PostgreSQL, SeaweedFS, applique les migrations, puis lance
+l'API, le worker et l'application web.
 
 | Service | Adresse |
 | --- | --- |
@@ -60,6 +60,17 @@ worker et l'application web.
 | API | <http://localhost:8080> |
 | OpenAPI | <http://localhost:8080/docs> |
 | Santé | <http://localhost:8080/health/live> |
+| Stockage objet S3 | <http://localhost:8333> |
+
+SeaweedFS mono-nœud fournit le stockage objet de développement : le bucket
+`riposteos-documents` est créé au démarrage et ses données persistent dans le
+volume `object_storage_data`. Les variables `S3_PORT`, `S3_BUCKET`,
+`S3_ACCESS_KEY` et `S3_SECRET_KEY` sont surchargeables localement. Vérifier son
+état avec `docker compose -f compose.dev.yml ps` ; l'API utilise
+`http://object-storage:8333` dans Compose. En dehors de Docker, `ObjectStorage`
+accepte un endpoint S3 compatible ou AWS S3 standard. SeaweedFS mono-nœud est
+un défaut de développement, pas une architecture haute disponibilité de
+production.
 
 Pour lancer aussi Docling Serve, nécessaire aux futurs traitements documentaires :
 

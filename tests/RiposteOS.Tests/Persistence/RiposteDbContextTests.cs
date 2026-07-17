@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.AspNetCore.Identity;
 using RiposteOS.Core.Sourcing;
+using RiposteOS.Core.Documents;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Infrastructure.Persistence.Configurations;
 
@@ -29,6 +30,7 @@ public sealed class RiposteDbContextTests
         var settings = AssertEntity<SourcingSettings>(dbContext.Model, "sourcing_settings", DatabaseSchemas.Sourcing);
         var run = AssertEntity<ImportRun>(dbContext.Model, "import_runs", DatabaseSchemas.Sourcing);
         var syncState = AssertEntity<SourcingSyncState>(dbContext.Model, "sourcing_sync_states", DatabaseSchemas.Sourcing);
+        var document = AssertEntity<StoredDocument>(dbContext.Model, "stored_documents", DatabaseSchemas.Documents);
 
         Assert.Equal("jsonb", opportunity.FindProperty(nameof(Opportunity.RawPayload))?.GetColumnType());
         Assert.Equal("text[]", opportunity.FindProperty("_countryCodes")?.GetColumnType());
@@ -55,6 +57,8 @@ public sealed class RiposteDbContextTests
         Assert.Equal(typeof(string), run.FindProperty(nameof(ImportRun.Status))?.GetProviderClrType());
         Assert.Equal(DatabaseFunctions.NewGuid, run.FindProperty(nameof(ImportRun.Id))?.GetDefaultValueSql());
         Assert.Equal(ValueGenerated.Never, syncState.FindProperty(nameof(SourcingSyncState.Source))?.ValueGenerated);
+        Assert.Equal("bigint", document.FindProperty(nameof(StoredDocument.Size))?.GetColumnType());
+        Assert.Contains(document.GetIndexes(), index => index.IsUnique);
 
         var identityUser = dbContext.Model.FindEntityType(typeof(IdentityUser<Guid>));
         var identityRole = dbContext.Model.FindEntityType(typeof(IdentityRole<Guid>));

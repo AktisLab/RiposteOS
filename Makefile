@@ -2,7 +2,7 @@ COMPOSE := docker compose -f compose.dev.yml
 
 .DEFAULT_GOAL := help
 
-.PHONY: help dev dev-ai up down logs ps config build test coverage check audit format migrate migration db-shell
+.PHONY: help dev dev-ai up down logs ps config build test test-docker coverage check audit format migrate migration db-shell
 
 help:
 	@printf '%s\n' \
@@ -12,6 +12,7 @@ help:
 		'make logs             Suit les logs' \
 		'make build            Compile backend et frontend' \
 		'make test             Lance les tests backend' \
+		'make test-docker      Lance les tests backend avec le socket Docker actif' \
 		'make coverage         Mesure la couverture du backend' \
 		'make check            Vérifie format, lint, build et tests' \
 		'make audit            Audite les dépendances' \
@@ -45,6 +46,9 @@ build:
 
 test:
 	dotnet test RiposteOS.slnx
+
+test-docker:
+	DOCKER_SOCKET="$$(docker context inspect "$$(docker context show)" --format '{{ .Endpoints.docker.Host }}' | sed 's|^unix://||')" $(COMPOSE) run --rm --no-deps test
 
 coverage:
 	rm -rf tests/RiposteOS.Tests/TestResults/coverage

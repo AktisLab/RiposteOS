@@ -1,4 +1,7 @@
 using System.Net;
+using Amazon;
+using Amazon.Runtime;
+using Amazon.S3;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Gridify;
@@ -7,6 +10,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RiposteOS.Core.Sourcing;
+using RiposteOS.Core.Documents;
+using RiposteOS.Infrastructure.Documents;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Infrastructure.Persistence.Configurations;
 using RiposteOS.Infrastructure.Sourcing;
@@ -32,6 +37,35 @@ public static class DependencyInjection
             .AddRoles<IdentityRole<Guid>>()
             .AddEntityFrameworkStores<RiposteDbContext>();
         services.AddSingleton(TimeProvider.System);
+        services.AddOptions<ObjectStorageOptions>()
+            .Bind(configuration.GetSection(ObjectStorageOptions.SectionName))
+            .Validate(options => !string.IsNullOrWhiteSpace(options.BucketName) && options.BucketName.Length <= 63, "ObjectStorage:BucketName is required and must not exceed 63 characters.")
+            .Validate(options => !string.IsNullOrWhiteSpace(options.Region), "ObjectStorage:Region is required.")
+            .Validate(options => string.IsNullOrWhiteSpace(options.ServiceUrl) || Uri.TryCreate(options.ServiceUrl, UriKind.Absolute, out _), "ObjectStorage:ServiceUrl must be an absolute URL.")
+            .Validate(options => string.IsNullOrWhiteSpace(options.AccessKey) == string.IsNullOrWhiteSpace(options.SecretKey), "ObjectStorage credentials must be configured together.")
+            .Validate(options => options.MaxDocumentSizeBytes is > 0 and <= StoredDocument.MaximumSize, "ObjectStorage:MaxDocumentSizeBytes is invalid.")
+            .ValidateOnStart();
+        services.AddSingleton<IAmazonS3>(serviceProvider =>
+        {
+            var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<ObjectStorageOptions>>().Value;
+            var config = new AmazonS3Config
+            {
+                RegionEndpoint = RegionEndpoint.GetBySystemName(options.Region),
+                ForcePathStyle = options.ForcePathStyle,
+                Timeout = TimeSpan.FromSeconds(30),
+                MaxErrorRetry = 3,
+            };
+            if (!string.IsNullOrWhiteSpace(options.ServiceUrl))
+            {
+                config.ServiceURL = options.ServiceUrl;
+            }
+
+            return string.IsNullOrWhiteSpace(options.AccessKey)
+                ? new AmazonS3Client(config)
+                : new AmazonS3Client(new BasicAWSCredentials(options.AccessKey, options.SecretKey), config);
+        });
+        services.AddScoped<IObjectStorage, S3ObjectStorage>();
+        services.AddScoped<DocumentsFacade>();
         services.AddOptions<BoampOptions>()
             .Bind(configuration.GetSection(BoampOptions.SectionName))
             .Validate(options => Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out _), "Boamp:BaseUrl must be an absolute URL.")

@@ -1,6 +1,25 @@
 name: riposteos-dev
 
 services:
+  object-storage:
+    image: chrislusf/seaweedfs:4.29
+    command:
+      - mini
+      - -dir=/data
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-riposteos}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-riposteos-local-secret}
+      S3_BUCKET: ${S3_BUCKET:-riposteos-documents}
+    ports:
+      - '${S3_PORT:-8333}:8333'
+    volumes:
+      - object_storage_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://localhost:9333/cluster/status']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
   postgres:
     image: pgvector/pgvector:pg17
     environment:
@@ -33,12 +52,36 @@ services:
       ArtifactsPath: /tmp/artifacts
       UseArtifactsOutput: 'true'
       ConnectionStrings__Database: Host=postgres;Port=5432;Database=${POSTGRES_DB:-riposteos};Username=${POSTGRES_USER:-riposteos};Password=${POSTGRES_PASSWORD:-riposteos}
+      ObjectStorage__ServiceUrl: http://object-storage:8333
+      ObjectStorage__BucketName: ${S3_BUCKET:-riposteos-documents}
+      ObjectStorage__Region: us-east-1
+      ObjectStorage__ForcePathStyle: 'true'
+      ObjectStorage__AccessKey: ${S3_ACCESS_KEY:-riposteos}
+      ObjectStorage__SecretKey: ${S3_SECRET_KEY:-riposteos-local-secret}
     volumes:
       - .:/workspace
       - nuget_packages:/root/.nuget/packages
     depends_on:
       postgres:
         condition: service_healthy
+
+  test:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    working_dir: /workspace
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        dotnet restore RiposteOS.slnx --artifacts-path /tmp/artifacts &&
+        dotnet test RiposteOS.slnx --no-restore
+    environment:
+      ArtifactsPath: /tmp/artifacts
+      UseArtifactsOutput: 'true'
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - .:/workspace
+      - nuget_packages:/root/.nuget/packages
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
 
   api:
     image: mcr.microsoft.com/dotnet/sdk:10.0
@@ -59,6 +102,12 @@ services:
       DOTNET_USE_POLLING_FILE_WATCHER: '1'
       DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: '1'
       ConnectionStrings__Database: Host=postgres;Port=5432;Database=${POSTGRES_DB:-riposteos};Username=${POSTGRES_USER:-riposteos};Password=${POSTGRES_PASSWORD:-riposteos}
+      ObjectStorage__ServiceUrl: http://object-storage:8333
+      ObjectStorage__BucketName: ${S3_BUCKET:-riposteos-documents}
+      ObjectStorage__Region: us-east-1
+      ObjectStorage__ForcePathStyle: 'true'
+      ObjectStorage__AccessKey: ${S3_ACCESS_KEY:-riposteos}
+      ObjectStorage__SecretKey: ${S3_SECRET_KEY:-riposteos-local-secret}
     ports:
       - '${API_PORT:-8080}:8080'
     volumes:
@@ -67,6 +116,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      object-storage:
+        condition: service_healthy
 
   worker:
     image: mcr.microsoft.com/dotnet/sdk:10.0
@@ -84,12 +135,20 @@ services:
       DOTNET_ENVIRONMENT: Development
       DOTNET_USE_POLLING_FILE_WATCHER: '1'
       ConnectionStrings__Database: Host=postgres;Port=5432;Database=${POSTGRES_DB:-riposteos};Username=${POSTGRES_USER:-riposteos};Password=${POSTGRES_PASSWORD:-riposteos}
+      ObjectStorage__ServiceUrl: http://object-storage:8333
+      ObjectStorage__BucketName: ${S3_BUCKET:-riposteos-documents}
+      ObjectStorage__Region: us-east-1
+      ObjectStorage__ForcePathStyle: 'true'
+      ObjectStorage__AccessKey: ${S3_ACCESS_KEY:-riposteos}
+      ObjectStorage__SecretKey: ${S3_SECRET_KEY:-riposteos-local-secret}
     volumes:
       - .:/workspace
       - nuget_packages:/root/.nuget/packages
     depends_on:
       migrate:
         condition: service_completed_successfully
+      object-storage:
+        condition: service_healthy
 
   web:
     build:
@@ -122,6 +181,7 @@ services:
       - docling_cache:/root/.cache
 
 volumes:
+  object_storage_data:
   postgres_data:
   nuget_packages:
   web_node_modules:
