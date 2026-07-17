@@ -17,11 +17,21 @@ public static class DocumentsEndpoints
         var group = endpoints.MapGroup("/api/documents").WithTags("Documents");
 
         group.MapPost("", async Task<IResult> (
-            [FromForm] IFormFile? file,
+            HttpRequest request,
             DocumentsFacade documents,
             IOptions<ObjectStorageOptions> options,
             CancellationToken cancellationToken) =>
         {
+            IFormFile? file;
+            try
+            {
+                file = (await request.ReadFormAsync(cancellationToken)).Files.GetFile("file");
+            }
+            catch (InvalidDataException)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = ["Le fichier est invalide."] });
+            }
+
             var validation = await ValidateUploadAsync(file, options.Value.MaxDocumentSizeBytes, cancellationToken);
             if (validation.Error is not null)
             {
@@ -135,7 +145,7 @@ public static class DocumentsEndpoints
                     return new UploadValidation(StatusCodes.Status415UnsupportedMediaType, "Le package OOXML est invalide.");
                 }
             }
-            catch (InvalidDataException)
+            catch (Exception exception) when (exception is InvalidDataException or ArgumentException)
             {
                 return new UploadValidation(StatusCodes.Status415UnsupportedMediaType, "Le package OOXML est invalide.");
             }

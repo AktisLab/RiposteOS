@@ -15,13 +15,11 @@ public sealed class SeaweedFsObjectStorageTests : IAsyncLifetime
     private const string SecretKey = "riposteos-local-secret";
     private const string BucketName = "riposteos-documents-tests";
     private readonly IContainer _container = new ContainerBuilder("chrislusf/seaweedfs:4.29")
-        .WithEntrypoint("/entrypoint.sh")
-        .WithCommand("mini", "-dir=/data")
         .WithEnvironment("AWS_ACCESS_KEY_ID", AccessKey)
         .WithEnvironment("AWS_SECRET_ACCESS_KEY", SecretKey)
         .WithEnvironment("S3_BUCKET", BucketName)
         .WithPortBinding(8333, true)
-        .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(8333))
+        .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("All enabled components are running and ready to use:"))
         .Build();
 
     public Task InitializeAsync() => _container.StartAsync();
@@ -31,14 +29,17 @@ public sealed class SeaweedFsObjectStorageTests : IAsyncLifetime
     [Fact]
     public async Task StreamsBytesThroughSeaweedFsWithoutChangingTheirSha256()
     {
-        var endpoint = $"http://{_container.IpAddress}:8333";
+        var host = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") is not null
+            ? "host.docker.internal"
+            : "localhost";
+        var endpoint = $"http://{host}:{_container.GetMappedPublicPort(8333)}";
         using var client = new AmazonS3Client(
             new BasicAWSCredentials(AccessKey, SecretKey),
             new AmazonS3Config
             {
-                ServiceURL = endpoint,
                 RegionEndpoint = RegionEndpoint.USEast1,
                 ForcePathStyle = true,
+                ServiceURL = endpoint,
             });
         var storage = new S3ObjectStorage(
             client,

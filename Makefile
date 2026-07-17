@@ -1,4 +1,5 @@
 COMPOSE := docker compose -f compose.dev.yml
+DOCKER_HOST_CONTEXT := $$(docker context inspect "$$(docker context show)" --format '{{ .Endpoints.docker.Host }}')
 
 .DEFAULT_GOAL := help
 
@@ -45,14 +46,14 @@ build:
 	$(COMPOSE) run --rm --no-deps web sh -lc 'pnpm install --frozen-lockfile && pnpm build'
 
 test:
-	dotnet test RiposteOS.slnx
+	DOCKER_HOST="$(DOCKER_HOST_CONTEXT)" dotnet test RiposteOS.slnx
 
 test-docker:
 	DOCKER_SOCKET="$$(docker context inspect "$$(docker context show)" --format '{{ .Endpoints.docker.Host }}' | sed 's|^unix://||')" $(COMPOSE) run --rm --no-deps test
 
 coverage:
 	rm -rf tests/RiposteOS.Tests/TestResults/coverage
-	dotnet test RiposteOS.slnx --collect:'XPlat Code Coverage' --settings tests/coverage.runsettings --results-directory tests/RiposteOS.Tests/TestResults/coverage
+	DOCKER_HOST="$(DOCKER_HOST_CONTEXT)" dotnet test RiposteOS.slnx --collect:'XPlat Code Coverage' --settings tests/coverage.runsettings --results-directory tests/RiposteOS.Tests/TestResults/coverage
 	@report="$$(find tests/RiposteOS.Tests/TestResults/coverage -name coverage.cobertura.xml -print -quit)"; \
 	line_rate="$$(sed -n '2s/.*line-rate="\([^"]*\)".*/\1/p' "$$report")"; \
 	branch_rate="$$(sed -n '2s/.*branch-rate="\([^"]*\)".*/\1/p' "$$report")"; \

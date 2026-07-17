@@ -34,4 +34,22 @@ public sealed class StoredDocumentTests
     [Fact]
     public void RejectsInvalidHash() => Assert.Throws<ArgumentException>(() =>
         new StoredDocument(Id, "offre.pdf", "application/pdf", 1, "not-a-hash", CreatedAt));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("application")]
+    public void RejectsInvalidContentTypes(string contentType) => Assert.Throws<ArgumentException>(() =>
+        new StoredDocument(Id, "offre.pdf", contentType, 1, Hash, CreatedAt));
+
+    [Fact]
+    public void RejectsAnOverlongContentType() => Assert.Throws<ArgumentException>(() =>
+        new StoredDocument(Id, "offre.pdf", new string('a', 256), 1, Hash, CreatedAt));
+
+    [Fact]
+    public void RejectsAnEmptyIdentifier() => Assert.Throws<ArgumentException>(() =>
+        new StoredDocument(Guid.Empty, "offre.pdf", "application/pdf", 1, Hash, CreatedAt));
+
+    [Fact]
+    public void RejectsAnEmptyHash() => Assert.Throws<ArgumentException>(() =>
+        new StoredDocument(Id, "offre.pdf", "application/pdf", 1, "", CreatedAt));
 }
