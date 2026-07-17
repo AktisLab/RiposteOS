@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RiposteOS.Api/RiposteOS.Api.csproj" />
+    <Project Path="src/RiposteOS.Core/RiposteOS.Core.csproj" />
+    <Project Path="src/RiposteOS.Infrastructure/RiposteOS.Infrastructure.csproj" />
+    <Project Path="src/RiposteOS.Worker/RiposteOS.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RiposteOS.Tests/RiposteOS.Tests.csproj" />
+  </Folder>
+</Solution>

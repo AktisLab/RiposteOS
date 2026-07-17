@@ -1,0 +1,220 @@
+{
+  "positiveSignals": [
+    "conception et réalisation",
+    "conception, réalisation",
+    "conception-réalisation",
+    "développement logiciel",
+    "développement de logiciels",
+    "développement d'une application",
+    "développement d'un logiciel",
+    "développements informatiques",
+    "développement sur mesure",
+    "développement spécifique",
+    "création d'une application",
+    "création d'un logiciel",
+    "réalisation d'une application",
+    "réalisation d'un logiciel",
+    "logiciel métier",
+    "application métier",
+    "outil métier",
+    "portail usager",
+    "portail agent",
+    "intranet",
+    "extranet",
+    "workflow",
+    "gestion de dossiers",
+    "plateforme numérique",
+    "plateforme applicative",
+    "refonte applicative",
+    "modernisation applicative",
+    "api",
+    "interopérabilité",
+    "connecteur",
+    "tableau de bord",
+    "data visualisation",
+    "rgaa",
+    "accessibilité numérique",
+    "ux/ui",
+    "react",
+    "postgresql",
+    ".net",
+    "c#",
+    "symfony",
+    "drupal",
+    "open source"
+  ],
+  "negativeSignals": [
+    "maintenance applicative",
+    "maintenance corrective",
+    "maintenance préventive",
+    "maintien en conditions opérationnelles",
+    "mco applicatif",
+    "tma",
+    "acquisition de licences",
+    "abonnement logiciel",
+    "solution clé en main",
+    "infogérance",
+    "centre de services",
+    "support utilisateurs",
+    "hotline",
+    "hébergement seul",
+    "matériel informatique",
+    "réseau",
+    "téléphonie",
+    "pare-feu",
+    "centre opérationnel de sécurité",
+    "pentest",
+    "audit sécurité",
+    "sap",
+    "oracle",
+    "servicenow",
+    "m365"
+  ],
+  "cpvWhitelistPrefixes": ["72212", "7223", "7224", "72262", "72413", "72421", "72422"],
+  "cpvWatchPrefixes": ["48000000", "72200000", "7222", "72263", "72400000"],
+  "cpvExcludedPrefixes": ["50324", "7225", "72261", "72267", "7261"],
+  "minimumPrecision": 0.8,
+  "minimumRecall": 0.8,
+  "cases": [
+    {
+      "sourceId": "26-60918",
+      "title": "Réalisation de prestations pour les sites web de l’Ecole polytechnique sur le CMS DRUPAL (hors Intranet)",
+      "cpvCodes": ["72230000"],
+      "descriptorLabels": ["Site internet"],
+      "expectedRelevant": true
+    },
+    {
+      "sourceId": "26-65462",
+      "title": "Conception et réalisation du nouveau site internet de l’Agence Technique de l'Information sur l'Hospitalisation (refonte) et accompagnement dans l’exploitation du site (maintenance)",
+      "cpvCodes": ["72413000", "72415000"],
+      "descriptorLabels": ["Site internet"],
+      "expectedRelevant": true
+    },
+    {
+      "sourceId": "26-66368",
+      "title": "Marché de conception, réalisation, maintenance et évolution d’une plateforme applicative de dépôt et de contrôle des comptes de campagne et des comptes des partis politiques pour la CNCCFP.",
+      "cpvCodes": ["72200000"],
+      "descriptorLabels": ["Informatique (prestations de services)"],
+      "expectedRelevant": true
+    },
+    {
+      "sourceId": "26-61013",
+      "title": "Marché relatif aux prestations de conception et de mise en oeuvre d'un nouvel intranet",
+      "cpvCodes": ["72212220"],
+      "descriptorLabels": ["Site internet"],
+      "expectedRelevant": true
+    },
+    {
+      "sourceId": "26-70220",
+      "title": "Conception, développement et déploiement d'une plateforme numérique 3D réglementaire et collaborative pour l'urbanisme",
+      "cpvCodes": [],
+      "descriptorLabels": ["Logiciel", "Numérisation"],
+      "expectedRelevant": true
+    },
+    {
+      "sourceId": "26-67399",
+      "title": "Conception et réalisation de projets, d'évolutions et maintenance des sites web de l'INRS",
+      "cpvCodes": ["72000000", "72500000"],
+      "descriptorLabels": ["Informatique (prestations de services)"],
+      "expectedRelevant": true
+    },
+    {
+      "sourceId": "26-60185",
+      "title": "Accompagnement à la conception et à la réalisation d’applications de visualisation de données géographiques pour l’observatoire de la santé",
+      "cpvCodes": [],
+      "descriptorLabels": ["Progiciel"],
+      "expectedRelevant": true
+    },
+    {
+      "sourceId": "26-62364",
+      "title": "Assistance technique, développements et veille Data : Big Data - Maintenance et évolution de la Stack Data",
+      "cpvCodes": [],
+      "descriptorLabels": ["Informatique (prestations de services)"],
+      "expectedRelevant": true
+    },
+    {
+      "sourceId": "26-66359",
+      "title": "Marché public d’accompagnement, d’exploitation et d’évolution des services numériques web et intranet",
+      "cpvCodes": ["72000000"],
+      "descriptorLabels": ["Informatique (prestations de services)"],
+      "expectedRelevant": true
+    },
+    {
+      "sourceId": "26-59841",
+      "title": "Mise en place d'une plateforme numérique de démocratie participative",
+      "cpvCodes": [],
+      "descriptorLabels": ["Informatique (prestations de services)"],
+      "expectedRelevant": true
+    },
+    {
+      "sourceId": "26-60659",
+      "title": "Conception et réalisation de la scénographie d'une exposition temporaire au Musée Savoisien",
+      "cpvCodes": [],
+      "descriptorLabels": ["Prestations de services"],
+      "expectedRelevant": false
+    },
+    {
+      "sourceId": "26-60048",
+      "title": "Conception et réalisation d'une campagne de communication Sobriété Hydrique",
+      "cpvCodes": [],
+      "descriptorLabels": ["Publicité", "Communication"],
+      "expectedRelevant": false
+    },
+    {
+      "sourceId": "26-66895",
+      "title": "Conception, réalisation et mise à jour de cartographie pour le SMMAG",
+      "cpvCodes": ["71222100"],
+      "descriptorLabels": ["Prestations de services"],
+      "expectedRelevant": false
+    },
+    {
+      "sourceId": "26-70208",
+      "title": "Marché de conception-réalisation pour une station d'épuration",
+      "cpvCodes": ["45232420", "45111100"],
+      "descriptorLabels": ["Station d'épuration (travaux)"],
+      "expectedRelevant": false
+    },
+    {
+      "sourceId": "26-65524",
+      "title": "Conception et réalisation de la scénographie de l'exposition Autochrome",
+      "cpvCodes": ["92521100"],
+      "descriptorLabels": ["Prestations de services"],
+      "expectedRelevant": false
+    },
+    {
+      "sourceId": "26-65304",
+      "title": "Conception et réalisation de prestations audiovisuelles pour Bordeaux Métropole",
+      "cpvCodes": ["92111260", "92111220"],
+      "descriptorLabels": ["Audiovisuel"],
+      "expectedRelevant": false
+    },
+    {
+      "sourceId": "26-68935",
+      "title": "Projet de réalisation d'une cuisine centrale dans le cadre d'un marché global de conception-réalisation",
+      "cpvCodes": ["71310000"],
+      "descriptorLabels": ["Assistance à maîtrise d'ouvrage"],
+      "expectedRelevant": false
+    },
+    {
+      "sourceId": "428485-2026",
+      "title": "Long-term API stockpiling and rapid finished dose form manufacture",
+      "cpvCodes": ["73100000"],
+      "descriptorLabels": [],
+      "expectedRelevant": false
+    },
+    {
+      "sourceId": "synthetic-capitali-boundary",
+      "title": "Fornitura di capitali e servizi sociali",
+      "cpvCodes": [],
+      "descriptorLabels": [],
+      "expectedRelevant": false
+    },
+    {
+      "sourceId": "26-59201",
+      "title": "Marché de travaux de datatransmission dans le cadre du projet ligne 2 de tramway",
+      "cpvCodes": ["45310000", "32500000"],
+      "descriptorLabels": ["Télécommunications"],
+      "expectedRelevant": false
+    }
+  ]
+}

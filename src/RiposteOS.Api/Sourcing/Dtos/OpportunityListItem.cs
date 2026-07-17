@@ -1,0 +1,25 @@
+namespace RiposteOS.Api.Sourcing.Dtos;
+
+public sealed record OpportunityListItem(
+    Guid Id,
+    string Source,
+    string SourceId,
+    string Title,
+    string Buyer,
+    string? Description,
+    string? ProcedureType,
+    string? ContractNature,
+    decimal? EstimatedValue,
+    string? Currency,
+    string? ExecutionDuration,
+    string? DocumentUrl,
+    int MatchScore,
+    string Status,
+    DateOnly PublicationDate,
+    DateTimeOffset? ResponseDeadline,
+    string[] DepartmentCodes,
+    string[] CpvCodes,
+    string[] DescriptorLabels,
+    string[] MatchReasons,
+    string NoticeUrl,
+    DateTimeOffset UpdatedAt);
