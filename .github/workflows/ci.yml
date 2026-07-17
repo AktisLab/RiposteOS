@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    outputs:
+      line_rate: ${{ steps.coverage.outputs.line_rate }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore RiposteOS.slnx
+
+      - name: Check formatting
+        run: dotnet format RiposteOS.slnx --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build RiposteOS.slnx --no-restore
+
+      - name: Test and measure coverage
+        id: coverage
+        shell: bash
+        run: |
+          dotnet test RiposteOS.slnx --no-build --no-restore \
+            --collect:'XPlat Code Coverage' \
+            --settings tests/coverage.runsettings \
+            --results-directory tests/RiposteOS.Tests/TestResults/coverage
+
+          report="$(find tests/RiposteOS.Tests/TestResults/coverage -name coverage.cobertura.xml -print -quit)"
+          line_rate="$(sed -n '2s/.*line-rate="\([^"]*\)".*/\1/p' "$report")"
+          branch_rate="$(sed -n '2s/.*branch-rate="\([^"]*\)".*/\1/p' "$report")"
+
+          awk -v lines="$line_rate" -v branches="$branch_rate" 'BEGIN {
+            printf "Coverage: %.2f%% lines, %.2f%% branches\n", lines * 100, branches * 100
+            if (lines < 0.95 || branches < 0.90) {
+              print "Coverage minimum: 95% lines and 90% branches"
+              exit 1
+            }
+          }'
+
+          printf 'line_rate=%.2f%%\n' "$(awk -v lines="$line_rate" 'BEGIN { print lines * 100 }')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: tests/RiposteOS.Tests/TestResults/coverage
+          if-no-files-found: ignore
+          retention-days: 14
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.13.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+  publish-coverage-badge:
+    name: Publish coverage badge
+    needs: [backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish coverage data on the badges branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LINE_RATE: ${{ needs.backend.outputs.line_rate }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          badge_branch='badges'
+          badge_ref="repos/$REPOSITORY/git/ref/heads/$badge_branch"
+
+          if ! gh api "$badge_ref" >/dev/null 2>&1; then
+            main_sha="$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+            gh api --method POST "repos/$REPOSITORY/git/refs" \
+              -f "ref=refs/heads/$badge_branch" \
+              -f "sha=$main_sha"
+          fi
+
+          data="$(jq -nc --arg line_rate "$LINE_RATE" '{lineRate: $line_rate}')"
+          content="$(printf '%s' "$data" | base64 -w 0)"
+          file_path='.github/badges/coverage.json'
+          file_endpoint="repos/$REPOSITORY/contents/$file_path?ref=$badge_branch"
+          current_content="$(gh api "$file_endpoint" --jq .content 2>/dev/null | tr -d '\n' || true)"
+
+          if [ "$content" = "$current_content" ]; then
+            exit 0
+          fi
+
+          args=(
+            --method PUT
+            "repos/$REPOSITORY/contents/$file_path"
+            -f 'message=ci: update coverage badge'
+            -f "content=$content"
+            -f "branch=$badge_branch"
+          )
+
+          file_sha="$(gh api "$file_endpoint" --jq .sha 2>/dev/null || true)"
+          if [ -n "$file_sha" ]; then
+            args+=(-f "sha=$file_sha")
+          fi
+
+          gh api "${args[@]}"
