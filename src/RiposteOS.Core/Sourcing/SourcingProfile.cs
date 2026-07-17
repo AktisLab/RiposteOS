@@ -21,4 +21,5 @@ public sealed record SourcingProfile(
     int UrgentDeadlinePenalty,
     int HighRelevanceThreshold,
     string BoampCron,
-    string TedCron);
+    string TedCron,
+    string PlaceCron);

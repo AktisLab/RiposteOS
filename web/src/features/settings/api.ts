@@ -22,6 +22,7 @@ export type SourcingSettings = {
   highRelevanceThreshold: number
   boampCron: string
   tedCron: string
+  placeCron: string
   updatedAt: string
 }
 

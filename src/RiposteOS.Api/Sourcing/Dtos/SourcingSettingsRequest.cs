@@ -21,4 +21,5 @@ public sealed record SourcingSettingsRequest(
     int UrgentDeadlinePenalty,
     int HighRelevanceThreshold,
     string? BoampCron = null,
-    string? TedCron = null);
+    string? TedCron = null,
+    string? PlaceCron = null);

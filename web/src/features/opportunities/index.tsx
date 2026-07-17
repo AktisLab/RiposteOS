@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import { ChevronDown, History, Loader2, Radar, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
+import { sourcingSources } from '@/lib/sourcing-source'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -41,7 +42,9 @@ import { buildOpportunityListQuery } from './gridify'
 const emptyOpportunities: Opportunity[] = []
 const route = getRouteApi('/_authenticated/opportunities')
 const latestImportQuery = { page: 1, pageSize: 10 }
-const allSources: OpportunitySource[] = ['boamp', 'ted']
+const allSources: OpportunitySource[] = sourcingSources.map(
+  (source) => source.value
+)
 
 export function Opportunities() {
   const queryClient = useQueryClient()
@@ -189,30 +192,24 @@ export function Opportunities() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align='end' className='w-56'>
-                <DropdownMenuItem
-                  className='cursor-pointer'
-                  disabled={
-                    importMutation.isPending ||
-                    activeSources.has('boamp') ||
-                    profileMissing
-                  }
-                  onSelect={() => synchronize(['boamp'])}
-                >
-                  <SourcingSourceLogo source='boamp' className='size-4' />
-                  Synchroniser BOAMP
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className='cursor-pointer'
-                  disabled={
-                    importMutation.isPending ||
-                    activeSources.has('ted') ||
-                    profileMissing
-                  }
-                  onSelect={() => synchronize(['ted'])}
-                >
-                  <SourcingSourceLogo source='ted' className='size-4' />
-                  Synchroniser TED
-                </DropdownMenuItem>
+                {sourcingSources.map((source) => (
+                  <DropdownMenuItem
+                    key={source.value}
+                    className='cursor-pointer'
+                    disabled={
+                      importMutation.isPending ||
+                      activeSources.has(source.value) ||
+                      profileMissing
+                    }
+                    onSelect={() => synchronize([source.value])}
+                  >
+                    <SourcingSourceLogo
+                      source={source.value}
+                      className='size-4'
+                    />
+                    Synchroniser {source.label}
+                  </DropdownMenuItem>
+                ))}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className='cursor-pointer'

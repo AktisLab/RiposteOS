@@ -24,7 +24,7 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
 
     public Task DisposeAsync() => _container.DisposeAsync().AsTask();
 
-    public async Task<string> CreateDatabaseAsync()
+    public async Task<string> CreateDatabaseAsync(string? targetMigration = null)
     {
         var databaseName = $"riposteos_{Guid.NewGuid():N}";
         var adminConnectionString = new NpgsqlConnectionStringBuilder(_container.GetConnectionString())
@@ -44,7 +44,15 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
             Database = databaseName,
         }.ConnectionString;
         await using var dbContext = CreateContext(connectionString);
-        await dbContext.Database.MigrateAsync();
+        if (targetMigration is null)
+        {
+            await dbContext.Database.MigrateAsync();
+        }
+        else
+        {
+            await dbContext.Database.MigrateAsync(targetMigration);
+        }
+
         return connectionString;
     }
 

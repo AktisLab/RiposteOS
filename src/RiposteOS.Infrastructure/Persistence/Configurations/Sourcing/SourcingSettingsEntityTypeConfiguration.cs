@@ -29,6 +29,10 @@ public sealed class SourcingSettingsEntityTypeConfiguration : IEntityTypeConfigu
             .HasMaxLength(100)
             .HasDefaultValue(SourcingSettings.DefaultSynchronizationCron)
             .IsRequired();
+        builder.Property(settings => settings.PlaceCron)
+            .HasMaxLength(100)
+            .HasDefaultValue(SourcingSettings.DefaultPlaceSynchronizationCron)
+            .IsRequired();
         builder.Property(settings => settings.UpdatedAt)
             .HasDefaultValueSql(DatabaseFunctions.Now);
 

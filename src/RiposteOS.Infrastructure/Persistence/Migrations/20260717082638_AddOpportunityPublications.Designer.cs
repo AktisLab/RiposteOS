@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using RiposteOS.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using RiposteOS.Infrastructure.Persistence;
 namespace RiposteOS.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(RiposteDbContext))]
-    partial class RiposteDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260717082638_AddOpportunityPublications")]
+    partial class AddOpportunityPublications
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -586,13 +589,6 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("PageSize")
                         .HasColumnType("integer");
-
-                    b.Property<string>("PlaceCron")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasDefaultValue("0 6,18 * * *");
 
                     b.Property<int>("PositiveSignalWeight")
                         .HasColumnType("integer");

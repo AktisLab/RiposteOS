@@ -384,6 +384,7 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
                 PageSize = 25,
                 BoampCron = "5 * * * *",
                 TedCron = "0 */6 * * *",
+                PlaceCron = "30 */6 * * *",
             });
         var updated = await response.Content.ReadFromJsonAsync<SourcingSettingsResponse>();
 
@@ -395,9 +396,11 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         Assert.Equal(25, updated.PageSize);
         Assert.Equal("5 * * * *", updated.BoampCron);
         Assert.Equal("0 */6 * * *", updated.TedCron);
+        Assert.Equal("30 */6 * * *", updated.PlaceCron);
         Assert.Collection(
             factory.RecurringJobs.Jobs.OrderBy(job => job.Id),
             job => Assert.Equal(("sourcing-sync-boamp", "5 * * * *", TimeZoneInfo.Utc), job),
+            job => Assert.Equal(("sourcing-sync-place", "30 */6 * * *", TimeZoneInfo.Utc), job),
             job => Assert.Equal(("sourcing-sync-ted", "0 */6 * * *", TimeZoneInfo.Utc), job));
     }
 
@@ -421,6 +424,7 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
                 CpvExcludedPrefixes = null,
                 BoampCron = null,
                 TedCron = null,
+                PlaceCron = null,
             });
         var updated = await response.Content.ReadFromJsonAsync<SourcingSettingsResponse>();
 
@@ -432,6 +436,7 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         Assert.Empty(updated.CpvWhitelistPrefixes);
         Assert.Equal(SourcingSettings.DefaultSynchronizationCron, updated.BoampCron);
         Assert.Equal(SourcingSettings.DefaultSynchronizationCron, updated.TedCron);
+        Assert.Equal(SourcingSettings.DefaultPlaceSynchronizationCron, updated.PlaceCron);
     }
 
     [Theory]
@@ -490,6 +495,7 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         ValidSettings with { UrgentDeadlineDays = 366 },
         ValidSettings with { BoampCron = "not-a-cron" },
         ValidSettings with { TedCron = "0 0 0 0 0 0" },
+        ValidSettings with { PlaceCron = "not-a-cron" },
     };
 
     private static SourcingSettingsRequest ValidSettings => new(
@@ -513,7 +519,8 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         20,
         35,
         SourcingSettings.DefaultSynchronizationCron,
-        SourcingSettings.DefaultSynchronizationCron);
+        SourcingSettings.DefaultSynchronizationCron,
+        SourcingSettings.DefaultPlaceSynchronizationCron);
 
     private async Task SeedOpportunitiesAsync(params Opportunity[] opportunities)
     {

@@ -11,6 +11,12 @@
     <Compile Update="Sourcing/BoampSource.Mapping.cs">
       <DependentUpon>BoampSource.cs</DependentUpon>
     </Compile>
+    <Compile Update="Sourcing/PlaceSource.Contracts.cs">
+      <DependentUpon>PlaceSource.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Sourcing/PlaceSource.Mapping.cs">
+      <DependentUpon>PlaceSource.cs</DependentUpon>
+    </Compile>
     <Compile Update="Sourcing/SourcingFacade.Contracts.cs">
       <DependentUpon>SourcingFacade.cs</DependentUpon>
     </Compile>
@@ -23,6 +29,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="AngleSharp" />
     <PackageReference Include="Cronos" />
     <PackageReference Include="Gridify.EntityFramework" />
     <PackageReference Include="Hangfire.AspNetCore" />

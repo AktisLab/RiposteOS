@@ -45,6 +45,7 @@ public sealed class SourcingRecurringJobRegistrar(
                 {
                     SourcingSource.Boamp => settings.BoampCron,
                     SourcingSource.Ted => settings.TedCron,
+                    SourcingSource.Place => settings.PlaceCron,
                     _ => throw new InvalidOperationException($"Unsupported sourcing source '{sourceKey}'."),
                 };
             recurringJobs.AddOrUpdate<SourcingSynchronizationJob>(

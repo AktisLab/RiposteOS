@@ -4,6 +4,7 @@ public sealed class SourcingSettings
 {
     public const int DefaultId = 1;
     public const string DefaultSynchronizationCron = "0 * * * *";
+    public const string DefaultPlaceSynchronizationCron = "0 6,18 * * *";
 
     private string[] _keywords = [];
     private string[] _excludedKeywords = [];
@@ -29,6 +30,7 @@ public sealed class SourcingSettings
         int highRelevanceThreshold,
         string boampCron,
         string tedCron,
+        string placeCron,
         DateTimeOffset updatedAt)
     {
         Id = id;
@@ -44,6 +46,7 @@ public sealed class SourcingSettings
         HighRelevanceThreshold = highRelevanceThreshold;
         BoampCron = boampCron;
         TedCron = tedCron;
+        PlaceCron = placeCron;
         UpdatedAt = updatedAt;
     }
 
@@ -52,7 +55,7 @@ public sealed class SourcingSettings
             profile.NegativeSignalPenalty, profile.PreferredDepartmentBoost,
             profile.CpvWhitelistBoost, profile.CpvWatchBoost, profile.CpvExclusionPenalty,
             profile.UrgentDeadlineDays, profile.UrgentDeadlinePenalty,
-            profile.HighRelevanceThreshold, profile.BoampCron, profile.TedCron, updatedAt)
+            profile.HighRelevanceThreshold, profile.BoampCron, profile.TedCron, profile.PlaceCron, updatedAt)
     {
         ChangeProfile(profile, updatedAt);
     }
@@ -101,6 +104,8 @@ public sealed class SourcingSettings
 
     public string TedCron { get; private set; }
 
+    public string PlaceCron { get; private set; }
+
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public void ChangeProfile(SourcingProfile profile, DateTimeOffset updatedAt)
@@ -140,6 +145,7 @@ public sealed class SourcingSettings
 
         var boampCron = NormalizeCron(profile.BoampCron, nameof(profile.BoampCron));
         var tedCron = NormalizeCron(profile.TedCron, nameof(profile.TedCron));
+        var placeCron = NormalizeCron(profile.PlaceCron, nameof(profile.PlaceCron));
 
         if (updatedAt < UpdatedAt)
         {
@@ -177,6 +183,7 @@ public sealed class SourcingSettings
         HighRelevanceThreshold = profile.HighRelevanceThreshold;
         BoampCron = boampCron;
         TedCron = tedCron;
+        PlaceCron = placeCron;
         UpdatedAt = updatedAt;
     }
 

@@ -13,6 +13,7 @@ public sealed class Opportunity
     private string[] _descriptorCodes = [];
     private string[] _descriptorLabels = [];
     private string[] _matchReasons = [];
+    private readonly List<OpportunityPublication> _publications = [];
 
     private Opportunity(
         Guid id,
@@ -146,6 +147,8 @@ public sealed class Opportunity
     public IReadOnlyList<string> DescriptorLabels => Array.AsReadOnly(_descriptorLabels);
 
     public IReadOnlyList<string> MatchReasons => Array.AsReadOnly(_matchReasons);
+
+    public IReadOnlyCollection<OpportunityPublication> Publications => _publications.AsReadOnly();
 
     public string? Description { get; private set; }
 
@@ -296,6 +299,36 @@ public sealed class Opportunity
     public void Dismiss() => Status = OpportunityStatus.Dismissed;
 
     public void ReturnToQualification() => Status = OpportunityStatus.ToQualify;
+
+    public OpportunityPublication AddPublication(
+        string source,
+        string sourceId,
+        string noticeUrl,
+        string? documentUrl,
+        string rawPayload,
+        DateTimeOffset firstSeenAt)
+    {
+        var normalizedSource = SourcingSource.Normalize(source);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceId);
+        var normalizedSourceId = sourceId.Trim();
+        if (_publications.Any(publication =>
+            publication.Source == normalizedSource
+            && publication.SourceId == normalizedSourceId))
+        {
+            throw new InvalidOperationException("The opportunity already contains this publication.");
+        }
+
+        var publication = new OpportunityPublication(
+            this,
+            normalizedSource,
+            normalizedSourceId,
+            noticeUrl,
+            documentUrl,
+            rawPayload,
+            firstSeenAt);
+        _publications.Add(publication);
+        return publication;
+    }
 
     public void ReassessMatch(
         int matchScore,

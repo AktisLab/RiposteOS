@@ -19,6 +19,7 @@ public sealed class SourcingSettingsTests
             CpvWhitelistPrefixes = [" 722 "],
             BoampCron = " 5 * * * * ",
             TedCron = "0 */6 * * *",
+            PlaceCron = "30 */6 * * *",
         };
         var settings = new SourcingSettings(profile, UpdatedAt);
 
@@ -29,6 +30,7 @@ public sealed class SourcingSettingsTests
         Assert.Equal(["722"], settings.CpvWhitelistPrefixes);
         Assert.Equal("5 * * * *", settings.BoampCron);
         Assert.Equal("0 */6 * * *", settings.TedCron);
+        Assert.Equal("30 */6 * * *", settings.PlaceCron);
         Assert.IsNotType<string[]>(settings.Keywords);
         Assert.Equal(20, settings.PageSize);
         Assert.Equal(35, settings.HighRelevanceThreshold);
@@ -68,5 +70,6 @@ public sealed class SourcingSettingsTests
         TestSourcingProfiles.Create() with { UrgentDeadlineDays = 366 },
         TestSourcingProfiles.Create() with { BoampCron = "" },
         TestSourcingProfiles.Create() with { TedCron = new string('a', 101) },
+        TestSourcingProfiles.Create() with { PlaceCron = "" },
     };
 }

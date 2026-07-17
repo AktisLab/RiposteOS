@@ -1,5 +1,6 @@
 import { useState, type KeyboardEvent } from 'react'
 import { Clock3, Code2, Plus, X } from 'lucide-react'
+import { findSourcingSource } from '@/lib/sourcing-source'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -161,10 +162,7 @@ export function ScheduleField({
 }) {
   const currentPreset = findSchedulePreset(value)
   const [advanced, setAdvanced] = useState(currentPreset === null)
-  const sourceDescription =
-    source === 'BOAMP'
-      ? 'Avis de marchés publics français'
-      : 'Avis de marchés publics européens'
+  const sourceDescription = findSourcingSource(source)?.description
 
   function switchToSimpleSchedule() {
     if (currentPreset === null) onChange(sourcingSchedulePresets[0].cron)
@@ -182,9 +180,11 @@ export function ScheduleField({
             <h3 className='font-semibold'>{source}</h3>
             {advanced && <Badge variant='outline'>Mode avancé</Badge>}
           </div>
-          <p className='mt-0.5 text-xs text-muted-foreground'>
-            {sourceDescription}
-          </p>
+          {sourceDescription && (
+            <p className='mt-0.5 text-xs text-muted-foreground'>
+              {sourceDescription}
+            </p>
+          )}
         </div>
       </div>
 

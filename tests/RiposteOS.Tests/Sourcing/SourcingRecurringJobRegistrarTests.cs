@@ -21,6 +21,7 @@ public sealed class SourcingRecurringJobRegistrarTests
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<SourcingSettingsStore>();
         services.AddSingleton<IOpportunitySource>(new EmptySource(SourcingSource.Boamp));
+        services.AddSingleton<IOpportunitySource>(new EmptySource(SourcingSource.Place));
         services.AddSingleton<IOpportunitySource>(new EmptySource(SourcingSource.Ted));
         using var provider = services.BuildServiceProvider();
         var recurringJobs = new RecordingRecurringJobManager();
@@ -35,6 +36,7 @@ public sealed class SourcingRecurringJobRegistrarTests
         Assert.Collection(
             recurringJobs.Jobs.OrderBy(job => job.Id),
             job => Assert.Equal(("sourcing-sync-boamp", "15 * * * *", TimeZoneInfo.Utc), job),
+            job => Assert.Equal(("sourcing-sync-place", "15 * * * *", TimeZoneInfo.Utc), job),
             job => Assert.Equal(("sourcing-sync-ted", "15 * * * *", TimeZoneInfo.Utc), job));
     }
 
@@ -48,12 +50,16 @@ public sealed class SourcingRecurringJobRegistrarTests
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<SourcingSettingsStore>();
         services.AddSingleton<IOpportunitySource>(new EmptySource(SourcingSource.Boamp));
+        services.AddSingleton<IOpportunitySource>(new EmptySource(SourcingSource.Place));
         services.AddSingleton<IOpportunitySource>(new EmptySource(SourcingSource.Ted));
         using var provider = services.BuildServiceProvider();
         await using (var scope = provider.CreateAsyncScope())
         {
             await scope.ServiceProvider.GetRequiredService<SourcingSettingsStore>().UpdateAsync(
-                TestSourcingProfiles.Create(boampCron: "5 * * * *", tedCron: "0 */6 * * *"),
+                TestSourcingProfiles.Create(
+                    boampCron: "5 * * * *",
+                    tedCron: "0 */6 * * *",
+                    placeCron: "30 */6 * * *"),
                 CancellationToken.None);
         }
 
@@ -68,6 +74,7 @@ public sealed class SourcingRecurringJobRegistrarTests
         Assert.Collection(
             recurringJobs.Jobs.OrderBy(job => job.Id),
             job => Assert.Equal(("sourcing-sync-boamp", "5 * * * *", TimeZoneInfo.Utc), job),
+            job => Assert.Equal(("sourcing-sync-place", "30 */6 * * *", TimeZoneInfo.Utc), job),
             job => Assert.Equal(("sourcing-sync-ted", "0 */6 * * *", TimeZoneInfo.Utc), job));
     }
 

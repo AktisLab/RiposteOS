@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Infrastructure.Sourcing;
@@ -11,6 +12,73 @@ namespace RiposteOS.Tests.Sourcing;
 [Collection(PostgreSqlTestGroup.Name)]
 public sealed class PostgreSqlImportConcurrencyTests(PostgreSqlFixture fixture)
 {
+    [Fact]
+    public async Task MigrationBackfillsExistingBoampAndTedOpportunities()
+    {
+        const string PreviousMigration = "20260716174501_AddOpportunityEnrichment";
+        var connectionString = await fixture.CreateDatabaseAsync(PreviousMigration);
+        var importedAt = new DateTimeOffset(2026, 7, 17, 12, 0, 0, TimeSpan.Zero);
+        await using (var seedContext = PostgreSqlFixture.CreateContext(connectionString))
+        {
+            seedContext.AddRange(
+                CreateOpportunity("boamp-existing", importedAt),
+                new Opportunity(
+                    SourcingSource.Ted,
+                    "ted-existing",
+                    "Développement d'un logiciel métier",
+                    "Acheteur public",
+                    new DateOnly(2026, 7, 17),
+                    null,
+                    ["FRA"],
+                    ["69"],
+                    ["72200000"],
+                    [],
+                    [],
+                    40,
+                    [],
+                    "https://ted.test/notice",
+                    "{\"source\":\"ted\"}",
+                    importedAt,
+                    documentUrl: "https://ted.test/dce"));
+            await seedContext.SaveChangesAsync();
+            await seedContext.Database.MigrateAsync();
+        }
+
+        await using var verificationContext = PostgreSqlFixture.CreateContext(connectionString);
+        var publications = await verificationContext.Set<OpportunityPublication>()
+            .OrderBy(publication => publication.Source)
+            .ToArrayAsync();
+        Assert.Equal(2, publications.Length);
+        Assert.Equal([SourcingSource.Boamp, SourcingSource.Ted], publications.Select(item => item.Source));
+        Assert.Equal("https://ted.test/dce", publications[1].DocumentUrl);
+        Assert.All(publications, publication => Assert.False(string.IsNullOrWhiteSpace(publication.ContentHash)));
+    }
+
+    [Fact]
+    public async Task PublicationIdentityIsUniqueAcrossOpportunities()
+    {
+        var connectionString = await fixture.CreateDatabaseAsync();
+        var now = new DateTimeOffset(2026, 7, 17, 12, 0, 0, TimeSpan.Zero);
+        await using (var firstContext = PostgreSqlFixture.CreateContext(connectionString))
+        {
+            var opportunity = CreateOpportunity("first", now);
+            opportunity.AddPublication(SourcingSource.Boamp, "26-shared", "", null, "{}", now);
+            firstContext.Add(opportunity);
+            await firstContext.SaveChangesAsync();
+        }
+
+        await using var secondContext = PostgreSqlFixture.CreateContext(connectionString);
+        var duplicate = CreateOpportunity("second", now);
+        duplicate.AddPublication(SourcingSource.Boamp, "26-shared", "", null, "{}", now);
+        secondContext.Add(duplicate);
+
+        var exception = await Assert.ThrowsAsync<DbUpdateException>(
+            () => secondContext.SaveChangesAsync());
+        Assert.Equal(
+            PostgresErrorCodes.UniqueViolation,
+            Assert.IsType<PostgresException>(exception.InnerException).SqlState);
+    }
+
     [Fact]
     public async Task ConcurrentQueuesKeepOneActiveRunPerSource()
     {
@@ -203,6 +271,24 @@ public sealed class PostgreSqlImportConcurrencyTests(PostgreSqlFixture fixture)
         [],
         string.Empty,
         $"{{\"idweb\":\"{sourceId}\"}}");
+
+    private static Opportunity CreateOpportunity(string sourceId, DateTimeOffset importedAt) => new(
+        SourcingSource.Boamp,
+        sourceId,
+        "Développement d'un logiciel métier",
+        "Acheteur public",
+        new DateOnly(2026, 7, 17),
+        null,
+        ["FRA"],
+        ["69"],
+        ["72200000"],
+        [],
+        [],
+        40,
+        [],
+        string.Empty,
+        "{}",
+        importedAt);
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {

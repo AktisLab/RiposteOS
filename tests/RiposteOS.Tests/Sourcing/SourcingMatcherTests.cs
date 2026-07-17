@@ -120,4 +120,14 @@ public sealed class SourcingMatcherTests
         Assert.Contains("-30 Signal négatif : hébergement seul", match.Reasons);
         Assert.Empty(falsePositive.Reasons);
     }
+
+    [Theory]
+    [InlineData("Développement d’une API sécurisée", "api", true)]
+    [InlineData("Fornitura di capitali", "api", false)]
+    [InlineData("Expérience-utilisateur", "expérience utilisateur", true)]
+    public void TermsCanBeMatchedWithTheSharedNormalizedBoundaryRule(
+        string text,
+        string term,
+        bool expected) =>
+        Assert.Equal(expected, SourcingMatcher.ContainsTerm(text, term));
 }

@@ -29,7 +29,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { DataTablePagination, DataTableToolbar } from '@/components/data-table'
-import { BoampLogo, TedLogo } from '@/components/sourcing-source-logo'
+import {
+  BoampLogo,
+  PlaceLogo,
+  TedLogo,
+} from '@/components/sourcing-source-logo'
 import { type Opportunity } from '../api'
 import { type OpportunitySortField } from '../gridify'
 import { createOpportunityColumns } from './opportunities-columns'
@@ -47,6 +51,7 @@ const deadlineOptions = [
 const sourceOptions = [
   { label: 'BOAMP', value: 'boamp', icon: BoampLogo },
   { label: 'TED', value: 'ted', icon: TedLogo },
+  { label: 'PLACE', value: 'place', icon: PlaceLogo },
 ]
 const statusOptions = [
   { label: 'À qualifier', value: 'ToQualify', icon: Inbox },

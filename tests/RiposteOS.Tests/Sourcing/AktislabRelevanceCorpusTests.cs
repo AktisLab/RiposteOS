@@ -34,7 +34,8 @@ public sealed class AktislabRelevanceCorpusTests
             20,
             40,
             SourcingSettings.DefaultSynchronizationCron,
-            SourcingSettings.DefaultSynchronizationCron), now);
+            SourcingSettings.DefaultSynchronizationCron,
+            SourcingSettings.DefaultPlaceSynchronizationCron), now);
 
         var results = corpus.Cases.Select(item => new
         {

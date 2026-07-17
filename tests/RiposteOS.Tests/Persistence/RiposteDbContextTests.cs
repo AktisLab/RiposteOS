@@ -22,6 +22,10 @@ public sealed class RiposteDbContextTests
             dbContext.Model,
             "opportunity_revisions",
             DatabaseSchemas.Sourcing);
+        var publication = AssertEntity<OpportunityPublication>(
+            dbContext.Model,
+            "opportunity_publications",
+            DatabaseSchemas.Sourcing);
         var settings = AssertEntity<SourcingSettings>(dbContext.Model, "sourcing_settings", DatabaseSchemas.Sourcing);
         var run = AssertEntity<ImportRun>(dbContext.Model, "import_runs", DatabaseSchemas.Sourcing);
         var syncState = AssertEntity<SourcingSyncState>(dbContext.Model, "sourcing_sync_states", DatabaseSchemas.Sourcing);
@@ -29,6 +33,8 @@ public sealed class RiposteDbContextTests
         Assert.Equal("jsonb", opportunity.FindProperty(nameof(Opportunity.RawPayload))?.GetColumnType());
         Assert.Equal("text[]", opportunity.FindProperty("_countryCodes")?.GetColumnType());
         Assert.Equal("jsonb", revision.FindProperty(nameof(OpportunityRevision.RawPayload))?.GetColumnType());
+        Assert.Equal("jsonb", publication.FindProperty(nameof(OpportunityPublication.RawPayload))?.GetColumnType());
+        Assert.Contains(publication.GetIndexes(), index => index.IsUnique);
         Assert.Equal(
             nameof(OpportunityRevision.OpportunityId),
             Assert.Single(revision.GetForeignKeys()).Properties.Single().Name);
@@ -43,6 +49,9 @@ public sealed class RiposteDbContextTests
         Assert.Equal(
             SourcingSettings.DefaultSynchronizationCron,
             settings.FindProperty(nameof(SourcingSettings.TedCron))?.GetDefaultValue());
+        Assert.Equal(
+            SourcingSettings.DefaultPlaceSynchronizationCron,
+            settings.FindProperty(nameof(SourcingSettings.PlaceCron))?.GetDefaultValue());
         Assert.Equal(typeof(string), run.FindProperty(nameof(ImportRun.Status))?.GetProviderClrType());
         Assert.Equal(DatabaseFunctions.NewGuid, run.FindProperty(nameof(ImportRun.Id))?.GetDefaultValueSql());
         Assert.Equal(ValueGenerated.Never, syncState.FindProperty(nameof(SourcingSyncState.Source))?.ValueGenerated);

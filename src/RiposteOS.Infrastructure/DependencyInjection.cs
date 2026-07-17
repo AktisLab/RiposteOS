@@ -1,3 +1,4 @@
+using System.Net;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Gridify;
@@ -59,6 +60,28 @@ public static class DependencyInjection
         }).AddStandardResilienceHandler();
         services.AddScoped<IOpportunitySource>(serviceProvider =>
             serviceProvider.GetRequiredService<TedSource>());
+        services.AddOptions<PlaceOptions>()
+            .Bind(configuration.GetSection(PlaceOptions.SectionName))
+            .Validate(options => Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out _), "Place:BaseUrl must be an absolute URL.")
+            .Validate(options => options.InitialLookbackDays is >= 0 and <= 365, "Place:InitialLookbackDays must be between 0 and 365.")
+            .Validate(options => options.OverlapDays is >= 0 and <= 30, "Place:OverlapDays must be between 0 and 30.")
+            .Validate(options => options.RequestDelayMilliseconds is >= 0 and <= 5_000, "Place:RequestDelayMilliseconds must be between 0 and 5000.")
+            .ValidateOnStart();
+        services.AddHttpClient<PlaceSource>((serviceProvider, client) =>
+        {
+            var placeOptions = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PlaceOptions>>().Value;
+            client.BaseAddress = new Uri(placeOptions.BaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("RiposteOS/1.0 (+https://github.com/guillaumeroussel/RiposteOS)");
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+        {
+            AllowAutoRedirect = true,
+            AutomaticDecompression = DecompressionMethods.All,
+            CookieContainer = new CookieContainer(),
+            UseCookies = true,
+        }).AddStandardResilienceHandler();
+        services.AddScoped<IOpportunitySource>(serviceProvider =>
+            serviceProvider.GetRequiredService<PlaceSource>());
         services.AddScoped<OpportunityImporter>();
         services.AddScoped<SourcingImportJob>();
         services.AddScoped<ImportRunStore>();

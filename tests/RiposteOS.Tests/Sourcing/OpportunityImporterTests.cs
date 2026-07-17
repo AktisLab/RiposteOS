@@ -12,6 +12,97 @@ namespace RiposteOS.Tests.Sourcing;
 public sealed class OpportunityImporterTests
 {
     [Fact]
+    public async Task ExplicitReferenceAttachesASecondaryPublicationWithoutReplacingCanonicalData()
+    {
+        await using var dbContext = new RiposteDbContext(
+            new DbContextOptionsBuilder<RiposteDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
+        var now = new DateTimeOffset(2026, 7, 17, 12, 0, 0, TimeSpan.Zero);
+        var timeProvider = new FixedTimeProvider(now);
+        var boamp = new StubOpportunitySource(new SourceOpportunity(
+            "26-1",
+            "Titre BOAMP canonique",
+            "Acheteur",
+            new DateOnly(2026, 7, 17),
+            null,
+            ["FRA"],
+            ["69"],
+            ["72200000"],
+            [],
+            [],
+            "https://boamp.test/26-1",
+            "{\"source\":\"boamp\"}"));
+        var placeOpportunity = new SourceOpportunity(
+            "PLACE-1",
+            "Titre PLACE différent",
+            "Acheteur",
+            new DateOnly(2026, 7, 17),
+            null,
+            ["FRA"],
+            ["69"],
+            ["72200000"],
+            [],
+            [],
+            "https://place.test/PLACE-1",
+            "{\"source\":\"place\",\"version\":1}",
+            DocumentUrl: "https://place.test/dce")
+        {
+            References = [new SourceOpportunityReference(SourcingSource.Boamp, "26-1")],
+        };
+        var place = new StubOpportunitySource(placeOpportunity) { Key = "PLACE" };
+        var settingsStore = new SourcingSettingsStore(dbContext, timeProvider);
+        await settingsStore.UpdateAsync(TestSourcingProfiles.Create(["logiciel"]), CancellationToken.None);
+        var runStore = new ImportRunStore(dbContext, timeProvider);
+        var importer = new OpportunityImporter(
+            [boamp, place], dbContext, timeProvider, settingsStore, runStore);
+        var job = new SourcingImportJob(importer, runStore, NullLogger<SourcingImportJob>.Instance);
+
+        var boampRun = (await runStore.QueueAsync(SourcingSource.Boamp, CancellationToken.None)).Run;
+        await job.ExecuteAsync(new ImportOpportunities(SourcingSource.Boamp, boampRun.Id), CancellationToken.None);
+        var placeRun = (await runStore.QueueAsync("PLACE", CancellationToken.None)).Run;
+        await job.ExecuteAsync(new ImportOpportunities("PLACE", placeRun.Id), CancellationToken.None);
+
+        dbContext.ChangeTracker.Clear();
+        var opportunity = await dbContext.Set<Opportunity>().SingleAsync();
+        var publications = await dbContext.Set<OpportunityPublication>()
+            .OrderBy(publication => publication.Source)
+            .ToArrayAsync();
+        var completedPlaceRun = await dbContext.Set<ImportRun>().SingleAsync(run => run.Id == placeRun.Id);
+        Assert.Equal("Titre BOAMP canonique", opportunity.Title);
+        Assert.Equal(SourcingSource.Boamp, opportunity.Source);
+        Assert.Equal(2, publications.Length);
+        Assert.Equal([SourcingSource.Boamp, "PLACE"], publications.Select(item => item.Source));
+        Assert.Equal(0, completedPlaceRun.Created);
+        Assert.Equal(1, completedPlaceRun.Updated);
+        Assert.Empty(await dbContext.Set<OpportunityRevision>().ToArrayAsync());
+
+        place.Replace(new SourceOpportunity(
+            "PLACE-2",
+            "Titre BOAMP canonique",
+            "Acheteur",
+            new DateOnly(2026, 7, 17),
+            null,
+            ["FRA"],
+            ["69"],
+            ["72200000"],
+            [],
+            [],
+            "https://place.test/PLACE-2",
+            "{\"source\":\"place\",\"id\":2}"));
+        var unreferencedRun = (await runStore.QueueAsync("PLACE", CancellationToken.None)).Run;
+        await job.ExecuteAsync(
+            new ImportOpportunities("PLACE", unreferencedRun.Id), CancellationToken.None);
+        dbContext.ChangeTracker.Clear();
+
+        Assert.Equal(2, await dbContext.Set<Opportunity>().CountAsync());
+        Assert.Equal(3, await dbContext.Set<OpportunityPublication>().CountAsync());
+        Assert.Equal(
+            1,
+            (await dbContext.Set<ImportRun>().SingleAsync(run => run.Id == unreferencedRun.Id)).Created);
+    }
+
+    [Fact]
     public async Task SkippedNoticeIsPersistedAndCanBeRetriedIdempotently()
     {
         await using var dbContext = new RiposteDbContext(
@@ -292,7 +383,7 @@ public sealed class OpportunityImporterTests
     {
         private SourceOpportunity[] _opportunities = opportunities;
 
-        public string Key => SourcingSource.Boamp;
+        public string Key { get; init; } = SourcingSource.Boamp;
 
         public SourcingSettings? Settings { get; private set; }
 

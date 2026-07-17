@@ -19,4 +19,7 @@ public sealed record SourceOpportunity(
     decimal? EstimatedValue = null,
     string? Currency = null,
     string? ExecutionDuration = null,
-    string? DocumentUrl = null);
+    string? DocumentUrl = null)
+{
+    public SourceOpportunityReference[] References { get; init; } = [];
+}

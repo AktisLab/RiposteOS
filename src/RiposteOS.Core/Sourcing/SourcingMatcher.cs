@@ -49,14 +49,14 @@ public static class SourcingMatcher
         var reasons = new List<string>();
         var score = 0;
         var searchableText = NormalizeForMatching(string.Join(' ', descriptorLabels.Prepend(title)));
-        var hasDigitalContext = DigitalContextSignals.Any(signal => ContainsSignal(searchableText, signal))
+        var hasDigitalContext = DigitalContextSignals.Any(signal => ContainsNormalizedSignal(searchableText, signal))
             || settings.PositiveSignals.Any(signal =>
-                !IsAmbiguousPositiveSignal(signal) && ContainsSignal(searchableText, signal))
+                !IsAmbiguousPositiveSignal(signal) && ContainsNormalizedSignal(searchableText, signal))
             || FindCpv(cpvCodes, settings.CpvWhitelistPrefixes) is not null
             || FindCpv(cpvCodes, settings.CpvWatchPrefixes) is not null;
 
         foreach (var signal in settings.PositiveSignals.Where(signal =>
-                     ContainsSignal(searchableText, signal)
+                     ContainsNormalizedSignal(searchableText, signal)
                      && (!IsAmbiguousPositiveSignal(signal)
                          || hasDigitalContext)))
         {
@@ -65,7 +65,7 @@ public static class SourcingMatcher
         }
 
         foreach (var signal in settings.NegativeSignals.Where(signal =>
-                     ContainsSignal(searchableText, signal)))
+                     ContainsNormalizedSignal(searchableText, signal)))
         {
             score -= settings.NegativeSignalPenalty;
             reasons.Add($"-{settings.NegativeSignalPenalty} Signal négatif : {signal}");
@@ -126,7 +126,14 @@ public static class SourcingMatcher
         cpvCodes.FirstOrDefault(code => prefixes.Any(prefix =>
             code.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)));
 
-    private static bool ContainsSignal(string normalizedText, string signal)
+    public static bool ContainsTerm(string text, string term)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(term);
+        return ContainsNormalizedSignal(NormalizeForMatching(text), term);
+    }
+
+    private static bool ContainsNormalizedSignal(string normalizedText, string signal)
     {
         var normalizedSignal = NormalizeForMatching(signal);
         return normalizedSignal.Length > 0

@@ -9,7 +9,8 @@ internal static class TestSourcingProfiles
         IReadOnlyCollection<string>? excludedKeywords = null,
         int pageSize = 20,
         string boampCron = SourcingSettings.DefaultSynchronizationCron,
-        string tedCron = SourcingSettings.DefaultSynchronizationCron) => new(
+        string tedCron = SourcingSettings.DefaultSynchronizationCron,
+        string placeCron = SourcingSettings.DefaultPlaceSynchronizationCron) => new(
         keywords ?? ["logiciel"],
         excludedKeywords ?? [],
         ["logiciel métier"],
@@ -30,5 +31,6 @@ internal static class TestSourcingProfiles
         20,
         35,
         boampCron,
-        tedCron);
+        tedCron,
+        placeCron);
 }

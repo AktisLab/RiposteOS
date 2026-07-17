@@ -49,7 +49,7 @@ type FormState = Omit<SourcingSettings, ListField | 'updatedAt'> &
   Record<ListField, string>
 type NumberFieldName = Exclude<
   keyof FormState,
-  ListField | 'boampCron' | 'tedCron'
+  ListField | 'boampCron' | 'tedCron' | 'placeCron'
 >
 
 export function SourcingSettingsForm({
@@ -150,7 +150,8 @@ export function SourcingSettingsForm({
 
             <SettingsSection
               title='Rythme de synchronisation'
-              description='Choisissez quand chaque source doit être vérifiée.'
+              description='Réglez chaque source indépendamment. PLACE couvre les consultations de l’État.'
+              columns='md:grid-cols-2 xl:grid-cols-3'
             >
               <ScheduleField
                 source='BOAMP'
@@ -164,6 +165,13 @@ export function SourcingSettingsForm({
                 value={form.tedCron}
                 onChange={(value) =>
                   setForm((current) => ({ ...current, tedCron: value }))
+                }
+              />
+              <ScheduleField
+                source='PLACE'
+                value={form.placeCron}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, placeCron: value }))
                 }
               />
             </SettingsSection>
@@ -363,7 +371,8 @@ export function SourcingSettingsForm({
             invalidLists ||
             parsedLists.keywords.length === 0 ||
             !form.boampCron.trim() ||
-            !form.tedCron.trim()
+            !form.tedCron.trim() ||
+            !form.placeCron.trim()
           }
         >
           {mutation.isPending ? (
@@ -433,5 +442,6 @@ function createFormState(settings: SourcingSettings): FormState {
     highRelevanceThreshold: settings.highRelevanceThreshold,
     boampCron: settings.boampCron,
     tedCron: settings.tedCron,
+    placeCron: settings.placeCron ?? settings.tedCron,
   }
 }

@@ -1,4 +1,5 @@
 import { apiRequest } from '@/lib/api-client'
+import { type SourcingSource } from '@/lib/sourcing-source'
 import { type OpportunityListQuery } from './gridify'
 
 export type Opportunity = {
@@ -70,7 +71,7 @@ export type ImportRunListQuery = {
   pageSize: number
 }
 
-export type OpportunitySource = 'boamp' | 'ted'
+export type OpportunitySource = SourcingSource
 
 export const opportunitiesQueryRoot = ['opportunities'] as const
 export const importRunsQueryRoot = ['sourcing-imports'] as const

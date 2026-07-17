@@ -127,9 +127,28 @@ public sealed class OpportunityImporter(
             .Select(group => group.Last())
             .ToArray();
         var sourceIds = uniqueOpportunities.Select(opportunity => opportunity.SourceId).ToArray();
-        var existing = await dbContext.Set<Opportunity>()
+        var existingPublications = await dbContext.Set<OpportunityPublication>()
+            .Include(publication => publication.Opportunity)
+            .Where(publication => publication.Source == source && sourceIds.Contains(publication.SourceId))
+            .ToDictionaryAsync(publication => publication.SourceId, cancellationToken);
+        var legacyOpportunities = await dbContext.Set<Opportunity>()
             .Where(opportunity => opportunity.Source == source && sourceIds.Contains(opportunity.SourceId))
             .ToDictionaryAsync(opportunity => opportunity.SourceId, cancellationToken);
+        var references = uniqueOpportunities
+            .SelectMany(opportunity => opportunity.References)
+            .Distinct()
+            .ToArray();
+        var referenceSources = references.Select(reference => reference.Source).Distinct().ToArray();
+        var referenceSourceIds = references.Select(reference => reference.SourceId).Distinct().ToArray();
+        var referencedPublications = references.Length == 0
+            ? []
+            : await dbContext.Set<OpportunityPublication>()
+                .Include(publication => publication.Opportunity)
+                .Where(publication => referenceSources.Contains(publication.Source)
+                    && referenceSourceIds.Contains(publication.SourceId))
+                .ToArrayAsync(cancellationToken);
+        var publicationsByReference = referencedPublications.ToDictionary(
+            publication => (publication.Source, publication.SourceId));
         var now = timeProvider.GetUtcNow();
         var created = 0;
         var changed = 0;
@@ -145,10 +164,31 @@ public sealed class OpportunityImporter(
                 sourceOpportunity.DescriptorLabels,
                 sourceOpportunity.ResponseDeadline,
                 now);
-            if (existing.TryGetValue(sourceOpportunity.SourceId, out var opportunity))
+            if (existingPublications.TryGetValue(sourceOpportunity.SourceId, out var publication))
             {
+                var opportunity = publication.Opportunity
+                    ?? throw new InvalidOperationException("The publication opportunity was not loaded.");
+                var publicationChanged = publication.Refresh(
+                    sourceOpportunity.NoticeUrl,
+                    sourceOpportunity.DocumentUrl,
+                    sourceOpportunity.RawPayload,
+                    now);
+                if (opportunity.Source != source || opportunity.SourceId != sourceOpportunity.SourceId)
+                {
+                    if (publicationChanged)
+                    {
+                        changed++;
+                    }
+                    else
+                    {
+                        unchanged++;
+                    }
+
+                    continue;
+                }
+
                 var previousRevision = new OpportunityRevision(opportunity, now);
-                if (!opportunity.RefreshFromSource(
+                var canonicalChanged = opportunity.RefreshFromSource(
                     sourceOpportunity.Title,
                     sourceOpportunity.Buyer,
                     sourceOpportunity.PublicationDate,
@@ -169,7 +209,8 @@ public sealed class OpportunityImporter(
                     sourceOpportunity.EstimatedValue,
                     sourceOpportunity.Currency,
                     sourceOpportunity.ExecutionDuration,
-                    sourceOpportunity.DocumentUrl))
+                    sourceOpportunity.DocumentUrl);
+                if (!canonicalChanged)
                 {
                     if (opportunity.MatchScore != match.Score
                         || !opportunity.MatchReasons.SequenceEqual(match.Reasons, StringComparer.Ordinal))
@@ -177,11 +218,68 @@ public sealed class OpportunityImporter(
                         opportunity.ReassessMatch(match.Score, match.Reasons, now);
                     }
 
-                    unchanged++;
+                    if (publicationChanged)
+                    {
+                        changed++;
+                    }
+                    else
+                    {
+                        unchanged++;
+                    }
+
                     continue;
                 }
 
                 dbContext.Set<OpportunityRevision>().Add(previousRevision);
+                changed++;
+                continue;
+            }
+
+            var referencedOpportunityIds = sourceOpportunity.References
+                .Select(reference => publicationsByReference.GetValueOrDefault(
+                    (reference.Source, reference.SourceId))?.OpportunityId)
+                .Where(opportunityId => opportunityId is not null)
+                .Select(opportunityId => opportunityId!.Value)
+                .Distinct()
+                .ToArray();
+            if (referencedOpportunityIds.Length > 1)
+            {
+                throw new InvalidOperationException(
+                    "The publication references several existing opportunities.");
+            }
+
+            Opportunity? referencedOpportunity = null;
+            if (referencedOpportunityIds.Length == 1)
+            {
+                referencedOpportunity = referencedPublications
+                    .First(item => item.OpportunityId == referencedOpportunityIds[0])
+                    .Opportunity;
+            }
+
+            if (referencedOpportunity is not null)
+            {
+                var newPublication = referencedOpportunity.AddPublication(
+                    source,
+                    sourceOpportunity.SourceId,
+                    sourceOpportunity.NoticeUrl,
+                    sourceOpportunity.DocumentUrl,
+                    sourceOpportunity.RawPayload,
+                    now);
+                dbContext.Set<OpportunityPublication>().Add(newPublication);
+                changed++;
+                continue;
+            }
+
+            if (legacyOpportunities.TryGetValue(sourceOpportunity.SourceId, out var legacyOpportunity))
+            {
+                var newPublication = legacyOpportunity.AddPublication(
+                    source,
+                    sourceOpportunity.SourceId,
+                    sourceOpportunity.NoticeUrl,
+                    sourceOpportunity.DocumentUrl,
+                    sourceOpportunity.RawPayload,
+                    now);
+                dbContext.Set<OpportunityPublication>().Add(newPublication);
                 changed++;
                 continue;
             }
@@ -210,6 +308,13 @@ public sealed class OpportunityImporter(
                 sourceOpportunity.Currency,
                 sourceOpportunity.ExecutionDuration,
                 sourceOpportunity.DocumentUrl);
+            createdOpportunity.AddPublication(
+                source,
+                sourceOpportunity.SourceId,
+                sourceOpportunity.NoticeUrl,
+                sourceOpportunity.DocumentUrl,
+                sourceOpportunity.RawPayload,
+                now);
             dbContext.Set<Opportunity>().Add(createdOpportunity);
             created++;
         }

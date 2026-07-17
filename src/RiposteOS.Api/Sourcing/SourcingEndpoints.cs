@@ -263,6 +263,7 @@ public static class SourcingEndpoints
 
         ValidateCron(request.BoampCron, nameof(request.BoampCron), errors);
         ValidateCron(request.TedCron, nameof(request.TedCron), errors);
+        ValidateCron(request.PlaceCron, nameof(request.PlaceCron), errors);
 
         return errors;
     }
@@ -288,7 +289,8 @@ public static class SourcingEndpoints
         request.UrgentDeadlinePenalty,
         request.HighRelevanceThreshold,
         request.BoampCron ?? SourcingSettings.DefaultSynchronizationCron,
-        request.TedCron ?? SourcingSettings.DefaultSynchronizationCron);
+        request.TedCron ?? SourcingSettings.DefaultSynchronizationCron,
+        request.PlaceCron ?? SourcingSettings.DefaultPlaceSynchronizationCron);
 
     private static void ValidateCron(
         string? cron,

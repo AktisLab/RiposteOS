@@ -34,7 +34,8 @@ public sealed class DependencyInjectionTests
         Assert.Collection(
             sources,
             source => Assert.IsType<BoampSource>(source),
-            source => Assert.IsType<TedSource>(source));
+            source => Assert.IsType<TedSource>(source),
+            source => Assert.IsType<PlaceSource>(source));
         Assert.NotNull(scope.ServiceProvider.GetService<SourcingSettingsStore>());
     }
 
@@ -71,6 +72,24 @@ public sealed class DependencyInjectionTests
     }
 
     [Theory]
+    [InlineData("Place:BaseUrl", "relative")]
+    [InlineData("Place:InitialLookbackDays", "-1")]
+    [InlineData("Place:InitialLookbackDays", "366")]
+    [InlineData("Place:OverlapDays", "-1")]
+    [InlineData("Place:OverlapDays", "31")]
+    [InlineData("Place:RequestDelayMilliseconds", "-1")]
+    [InlineData("Place:RequestDelayMilliseconds", "5001")]
+    public void InvalidPlaceOptionsFailValidation(string key, string value)
+    {
+        var services = new ServiceCollection();
+        services.AddInfrastructure(Configuration(new Dictionary<string, string?> { [key] = value }));
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Throws<OptionsValidationException>(() =>
+            _ = provider.GetRequiredService<IOptions<PlaceOptions>>().Value);
+    }
+
+    [Theory]
     [InlineData("SourcingSynchronization:Cron", "")]
     [InlineData("SourcingSynchronization:Cron", "not-a-cron")]
     [InlineData("SourcingSynchronization:SuccessSlaHours", "0")]
@@ -96,6 +115,10 @@ public sealed class DependencyInjectionTests
             ["Ted:BaseUrl"] = "https://ted.example/",
             ["Ted:InitialLookbackDays"] = "30",
             ["Ted:OverlapDays"] = "2",
+            ["Place:BaseUrl"] = "https://place.example/",
+            ["Place:InitialLookbackDays"] = "30",
+            ["Place:OverlapDays"] = "2",
+            ["Place:RequestDelayMilliseconds"] = "0",
             ["SourcingSynchronization:Cron"] = "0 * * * *",
             ["SourcingSynchronization:SuccessSlaHours"] = "25",
         };

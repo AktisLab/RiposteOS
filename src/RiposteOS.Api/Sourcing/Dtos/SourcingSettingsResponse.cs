@@ -22,4 +22,5 @@ public sealed record SourcingSettingsResponse(
     int HighRelevanceThreshold,
     string BoampCron,
     string TedCron,
+    string PlaceCron,
     DateTimeOffset UpdatedAt);
