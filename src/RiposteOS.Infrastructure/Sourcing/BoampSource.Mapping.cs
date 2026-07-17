@@ -5,6 +5,9 @@ namespace RiposteOS.Infrastructure.Sourcing;
 
 public sealed partial class BoampSource
 {
+    private static readonly string[] DeadlinePeriodNames =
+        ["cac:TenderSubmissionDeadlinePeriod", "cac:ParticipationRequestReceptionPeriod"];
+
     private static SourceOpportunity MapOpportunity(JsonElement record)
     {
         using var data = GetString(record, "donnees") is { } rawData
@@ -12,13 +15,20 @@ public sealed partial class BoampSource
             : null;
         var root = data?.RootElement;
         var estimatedAmount = root is { } value ? GetEstimatedAmount(value) : null;
+        var sourceId = GetRequiredString(record, "idweb");
+        var title = GetRequiredString(record, "objet");
+        var publicationDate = DateOnly.Parse(
+            GetRequiredString(record, "dateparution"),
+            CultureInfo.InvariantCulture);
+        var responseDeadline = GetResponseDeadline(record, root)
+            ?? throw new FormatException("BOAMP response deadline is missing.");
 
         return new SourceOpportunity(
-            GetRequiredString(record, "idweb"),
-            GetRequiredString(record, "objet"),
+            sourceId,
+            title,
             GetString(record, "nomacheteur") ?? "Acheteur non renseigné",
-            DateOnly.Parse(GetRequiredString(record, "dateparution"), CultureInfo.InvariantCulture),
-            GetDateTimeOffset(record, "datelimitereponse"),
+            publicationDate,
+            responseDeadline,
             [FranceCountryCode],
             GetStrings(record, "code_departement_prestation", "code_departement"),
             root is { } cpvRoot ? GetCpvCodes(cpvRoot) : [],
@@ -52,14 +62,96 @@ public sealed partial class BoampSource
             ? value.GetString()
             : null;
 
-    private static DateTimeOffset? GetDateTimeOffset(JsonElement record, string propertyName) =>
+    private static DateTimeOffset? GetResponseDeadline(JsonElement record, JsonElement? root)
+    {
+        if (ParseFrenchDateTime(GetString(record, "datelimitereponse")) is { } explicitDeadline)
+        {
+            return explicitDeadline;
+        }
+
+        if (root is not { } value)
+        {
+            return null;
+        }
+
+        if (string.Equals(GetString(record, "nature_libelle"), "Rectificatif", StringComparison.OrdinalIgnoreCase))
+        {
+            return FindProperties(value, "lireDate")
+                .Select(element => GetText(element))
+                .Select(ParseFrenchDateTime)
+                .Where(deadline => deadline is not null)
+                .Min();
+        }
+
+        return DeadlinePeriodNames
+            .SelectMany(propertyName => FindProperties(value, propertyName))
+            .Select(ParsePeriodDeadline)
+            .Where(deadline => deadline is not null)
+            .Min();
+    }
+
+    private static DateTimeOffset? ParsePeriodDeadline(JsonElement period)
+    {
+        var date = GetText(FindFirstProperty(period, "cbc:EndDate"));
+        if (date is null || date.Length < 10)
+        {
+            return null;
+        }
+
+        var time = GetText(FindFirstProperty(period, "cbc:EndTime"));
+        var offsetSource = time ?? date;
+        var offset = GetOffset(offsetSource);
+        var localTime = time is { Length: >= 8 } ? time[..8] : "23:59:59";
+        return ParseFrenchDateTime($"{date[..10]}T{localTime}{offset}");
+    }
+
+    private static DateTimeOffset? ParseDateTimeOffset(string? value) =>
         DateTimeOffset.TryParse(
-            GetString(record, propertyName),
+            value,
             CultureInfo.InvariantCulture,
             DateTimeStyles.RoundtripKind,
-            out var value)
-            ? value
+            out var parsed)
+            ? parsed.ToUniversalTime()
             : null;
+
+    private static DateTimeOffset? ParseFrenchDateTime(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (value.EndsWith('Z') || GetOffset(value).Length > 0)
+        {
+            return ParseDateTimeOffset(value);
+        }
+
+        if (!DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var local))
+        {
+            return null;
+        }
+
+        local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+        var timeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Paris");
+        return new DateTimeOffset(local, timeZone.GetUtcOffset(local)).ToUniversalTime();
+    }
+
+    private static string GetOffset(string value)
+    {
+        if (value.EndsWith('Z'))
+        {
+            return "Z";
+        }
+
+        var plus = value.LastIndexOf('+');
+        if (plus >= 0)
+        {
+            return value[plus..];
+        }
+
+        var minus = value.LastIndexOf('-');
+        return minus >= 8 ? value[minus..] : string.Empty;
+    }
 
     private static string[] GetStrings(JsonElement record, params string[] propertyNames)
     {
@@ -209,6 +301,35 @@ public sealed partial class BoampSource
         }
 
         return null;
+    }
+
+    private static IEnumerable<JsonElement> FindProperties(JsonElement root, string propertyName)
+    {
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in root.EnumerateObject())
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.Ordinal))
+                {
+                    yield return property.Value;
+                }
+
+                foreach (var nested in FindProperties(property.Value, propertyName))
+                {
+                    yield return nested;
+                }
+            }
+        }
+        else if (root.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in root.EnumerateArray())
+            {
+                foreach (var nested in FindProperties(item, propertyName))
+                {
+                    yield return nested;
+                }
+            }
+        }
     }
 
     private static string? GetText(JsonElement? element)

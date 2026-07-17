@@ -10,7 +10,8 @@ public sealed partial class TedSource
         GetRequiredLocalizedString(notice, "notice-title"),
         GetLocalizedString(notice, "buyer-name") ?? "Acheteur non renseigné",
         GetPublicationDate(notice),
-        GetResponseDeadline(notice),
+        GetResponseDeadline(notice)
+            ?? throw new FormatException("TED response deadline is missing."),
         GetStrings(notice, "place-of-performance-country-lot")
             .Select(country => country.ToUpperInvariant())
             .Distinct(StringComparer.Ordinal)
@@ -177,9 +178,34 @@ public sealed partial class TedSource
 
     private static DateTimeOffset? GetResponseDeadline(JsonElement notice)
     {
-        var dates = GetStrings(notice, "deadline-receipt-tender-date-lot");
-        var times = GetStrings(notice, "deadline-receipt-tender-time-lot");
         var deadlines = new List<DateTimeOffset>();
+        AddDeadlines(
+            notice,
+            "deadline-receipt-tender-date-lot",
+            "deadline-receipt-tender-time-lot",
+            deadlines);
+        AddDeadlines(
+            notice,
+            "deadline-receipt-request-date-lot",
+            "deadline-receipt-request-time-lot",
+            deadlines);
+        AddDeadlines(
+            notice,
+            "deadline-receipt-expressions-date-lot",
+            "deadline-receipt-expressions-time-lot",
+            deadlines);
+
+        return deadlines.Count == 0 ? null : deadlines.Min().ToUniversalTime();
+    }
+
+    private static void AddDeadlines(
+        JsonElement notice,
+        string datePropertyName,
+        string timePropertyName,
+        List<DateTimeOffset> deadlines)
+    {
+        var dates = GetStrings(notice, datePropertyName);
+        var times = GetStrings(notice, timePropertyName);
 
         for (var index = 0; index < dates.Length; index++)
         {
@@ -201,8 +227,6 @@ public sealed partial class TedSource
                 deadlines.Add(deadline);
             }
         }
-
-        return deadlines.Count == 0 ? null : deadlines.Min().ToUniversalTime();
     }
 
     private static string GetOffset(string value)

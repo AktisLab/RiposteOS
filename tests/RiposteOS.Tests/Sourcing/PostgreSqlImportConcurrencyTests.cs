@@ -13,48 +13,6 @@ namespace RiposteOS.Tests.Sourcing;
 public sealed class PostgreSqlImportConcurrencyTests(PostgreSqlFixture fixture)
 {
     [Fact]
-    public async Task MigrationBackfillsExistingBoampAndTedOpportunities()
-    {
-        const string PreviousMigration = "20260716174501_AddOpportunityEnrichment";
-        var connectionString = await fixture.CreateDatabaseAsync(PreviousMigration);
-        var importedAt = new DateTimeOffset(2026, 7, 17, 12, 0, 0, TimeSpan.Zero);
-        await using (var seedContext = PostgreSqlFixture.CreateContext(connectionString))
-        {
-            seedContext.AddRange(
-                CreateOpportunity("boamp-existing", importedAt),
-                new Opportunity(
-                    SourcingSource.Ted,
-                    "ted-existing",
-                    "Développement d'un logiciel métier",
-                    "Acheteur public",
-                    new DateOnly(2026, 7, 17),
-                    null,
-                    ["FRA"],
-                    ["69"],
-                    ["72200000"],
-                    [],
-                    [],
-                    40,
-                    [],
-                    "https://ted.test/notice",
-                    "{\"source\":\"ted\"}",
-                    importedAt,
-                    documentUrl: "https://ted.test/dce"));
-            await seedContext.SaveChangesAsync();
-            await seedContext.Database.MigrateAsync();
-        }
-
-        await using var verificationContext = PostgreSqlFixture.CreateContext(connectionString);
-        var publications = await verificationContext.Set<OpportunityPublication>()
-            .OrderBy(publication => publication.Source)
-            .ToArrayAsync();
-        Assert.Equal(2, publications.Length);
-        Assert.Equal([SourcingSource.Boamp, SourcingSource.Ted], publications.Select(item => item.Source));
-        Assert.Equal("https://ted.test/dce", publications[1].DocumentUrl);
-        Assert.All(publications, publication => Assert.False(string.IsNullOrWhiteSpace(publication.ContentHash)));
-    }
-
-    [Fact]
     public async Task PublicationIdentityIsUniqueAcrossOpportunities()
     {
         var connectionString = await fixture.CreateDatabaseAsync();
@@ -278,7 +236,7 @@ public sealed class PostgreSqlImportConcurrencyTests(PostgreSqlFixture fixture)
         "Développement d'un logiciel métier",
         "Acheteur public",
         new DateOnly(2026, 7, 17),
-        null,
+        new DateTimeOffset(2026, 8, 17, 10, 0, 0, TimeSpan.Zero),
         ["FRA"],
         ["69"],
         ["72200000"],

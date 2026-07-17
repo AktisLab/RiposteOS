@@ -99,6 +99,70 @@ public sealed class TedSourceTests
         Assert.Contains("description-proc", requestedFields);
         Assert.Contains("estimated-value-proc", requestedFields);
         Assert.Contains("document-url-lot", requestedFields);
+        Assert.Contains("deadline-receipt-request-date-lot", requestedFields);
+        Assert.Contains("deadline-receipt-request-time-lot", requestedFields);
+        Assert.Contains("deadline-receipt-expressions-date-lot", requestedFields);
+        Assert.Contains("deadline-receipt-expressions-time-lot", requestedFields);
+    }
+
+    [Fact]
+    public async Task MappingUsesRequestAndExpressionDeadlinesAndKeepsTheClosestOne()
+    {
+        const string payload = """
+            {
+              "totalNoticeCount": 3,
+              "notices": [
+                {
+                  "publication-number": "487198-2026",
+                  "publication-date": "2026-07-15",
+                  "notice-title": { "fra": "Candidature" },
+                  "deadline-receipt-request-date-lot": ["2026-08-10+02:00"],
+                  "deadline-receipt-request-time-lot": ["14:00:00+02:00"]
+                },
+                {
+                  "publication-number": "487199-2026",
+                  "publication-date": "2026-07-15",
+                  "notice-title": { "fra": "Manifestation d'intérêt" },
+                  "deadline-receipt-expressions-date-lot": ["2026-08-08+02:00"],
+                  "deadline-receipt-expressions-time-lot": ["09:30:00+02:00"]
+                },
+                {
+                  "publication-number": "487200-2026",
+                  "publication-date": "2026-07-15",
+                  "notice-title": { "fra": "Plusieurs échéances" },
+                  "deadline-receipt-tender-date-lot": ["2026-08-20+02:00"],
+                  "deadline-receipt-tender-time-lot": ["12:00:00+02:00"],
+                  "deadline-receipt-request-date-lot": ["2026-08-12+02:00"],
+                  "deadline-receipt-request-time-lot": ["11:00:00+02:00"],
+                  "deadline-receipt-expressions-date-lot": ["2026-08-15+02:00"],
+                  "deadline-receipt-expressions-time-lot": ["10:00:00+02:00"]
+                }
+              ]
+            }
+            """;
+        var source = CreateSource(new StubHttpMessageHandler(payload));
+
+        var page = await source.SearchPageAsync(
+            ["logiciel"],
+            [],
+            [],
+            [],
+            new DateOnly(2026, 7, 15),
+            0,
+            100,
+            CancellationToken.None);
+
+        Assert.Collection(
+            page.Opportunities,
+            opportunity => Assert.Equal(
+                new DateTimeOffset(2026, 8, 10, 12, 0, 0, TimeSpan.Zero),
+                opportunity.ResponseDeadline),
+            opportunity => Assert.Equal(
+                new DateTimeOffset(2026, 8, 8, 7, 30, 0, TimeSpan.Zero),
+                opportunity.ResponseDeadline),
+            opportunity => Assert.Equal(
+                new DateTimeOffset(2026, 8, 12, 9, 0, 0, TimeSpan.Zero),
+                opportunity.ResponseDeadline));
     }
 
     [Fact]
@@ -111,6 +175,7 @@ public sealed class TedSourceTests
                 "publication-number": "487194-2026",
                 "publication-date": "2026-07-15",
                 "notice-title": { "fra": "Accord-cadre multi-lots" },
+                "deadline-receipt-tender-date-lot": "2026-08-15+02:00",
                 "estimated-value-lot": ["100", "200"],
                 "estimated-value-cur-lot": ["EUR", "EUR"],
                 "duration-period-value-lot": ["12", "24"],
@@ -140,6 +205,7 @@ public sealed class TedSourceTests
                   "publication-number": "487195-2026",
                   "publication-date": "2026-07-15",
                   "notice-title": { "deu": "Ein Los" },
+                  "deadline-receipt-tender-date-lot": "2026-08-15+02:00",
                   "description-lot": { "fra": ["Description du lot unique"] },
                   "estimated-value-lot": "250000",
                   "estimated-value-cur-lot": "GBP",
@@ -150,6 +216,7 @@ public sealed class TedSourceTests
                   "publication-number": "487196-2026",
                   "publication-date": "2026-07-15",
                   "notice-title": { "fra": "Plusieurs lots" },
+                  "deadline-receipt-tender-date-lot": "2026-08-15+02:00",
                   "description-lot": { "fra": ["Lot un", "Lot deux"] },
                   "estimated-value-proc": "inconnu",
                   "estimated-value-cur-lot": ["EUR", "USD"],
@@ -160,6 +227,7 @@ public sealed class TedSourceTests
                   "publication-number": "487197-2026",
                   "publication-date": "2026-07-15",
                   "notice-title": { "fra": "Langue de repli" },
+                  "deadline-receipt-tender-date-lot": "2026-08-15+02:00",
                   "description-lot": { "deu": "Beschreibung" }
                 }
               ]
@@ -444,7 +512,8 @@ public sealed class TedSourceTests
           "notices": [{
             "publication-number": "{{id}}",
             "publication-date": "2026-07-15+02:00",
-            "notice-title": { "fra": "Développement logiciel" }
+            "notice-title": { "fra": "Développement logiciel" },
+            "deadline-receipt-tender-date-lot": "2026-08-15+02:00"
           }]
         }
         """;

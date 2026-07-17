@@ -125,7 +125,7 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
                 SourcingSource.Boamp,
                 "26-retry",
                 "mapping_json",
-                "{\"idweb\":\"26-retry\",\"objet\":\"Logiciel métier\",\"dateparution\":\"2026-07-16\",\"secret\":\"never-expose\"}",
+                "{\"idweb\":\"26-retry\",\"objet\":\"Logiciel métier\",\"dateparution\":\"2026-07-16\",\"datelimitereponse\":\"2026-08-16T12:00:00+02:00\",\"secret\":\"never-expose\"}",
                 now);
             invalidIssue = new ImportIssue(
                 run.Id,

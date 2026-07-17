@@ -7,8 +7,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace RiposteOS.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class Initial : Migration
+    public partial class InitialSourcingSchema : Migration
     {
+        private static readonly string[] SourceIdentityColumns = ["Source", "SourceId"];
+        private static readonly string[] RevisionHistoryColumns = ["OpportunityId", "CreatedAt"];
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -78,6 +81,7 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                     Fetched = table.Column<int>(type: "integer", nullable: false),
                     Created = table.Column<int>(type: "integer", nullable: false),
                     Updated = table.Column<int>(type: "integer", nullable: false),
+                    Unchanged = table.Column<int>(type: "integer", nullable: false),
                     Skipped = table.Column<int>(type: "integer", nullable: false),
                     ErrorMessage = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true)
                 },
@@ -100,10 +104,19 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                     Status = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
                     PublicationDate = table.Column<DateOnly>(type: "date", nullable: false),
                     ResponseDeadline = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    Description = table.Column<string>(type: "character varying(20000)", maxLength: 20000, nullable: true),
+                    ProcedureType = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: true),
+                    ContractNature = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: true),
+                    EstimatedValue = table.Column<decimal>(type: "numeric(19,4)", precision: 19, scale: 4, nullable: true),
+                    Currency = table.Column<string>(type: "character varying(3)", maxLength: 3, nullable: true),
+                    ExecutionDuration = table.Column<string>(type: "text", nullable: true),
+                    DocumentUrl = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true),
                     NoticeUrl = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
                     RawPayload = table.Column<string>(type: "jsonb", nullable: false),
+                    ContentHash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     ImportedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()"),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()"),
+                    CountryCodes = table.Column<string[]>(type: "text[]", nullable: false),
                     CpvCodes = table.Column<string[]>(type: "text[]", nullable: false),
                     DepartmentCodes = table.Column<string[]>(type: "text[]", nullable: false),
                     DescriptorCodes = table.Column<string[]>(type: "text[]", nullable: false),
@@ -131,7 +144,11 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                     UrgentDeadlineDays = table.Column<int>(type: "integer", nullable: false),
                     UrgentDeadlinePenalty = table.Column<int>(type: "integer", nullable: false),
                     HighRelevanceThreshold = table.Column<int>(type: "integer", nullable: false),
+                    BoampCron = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false, defaultValue: "0 * * * *"),
+                    TedCron = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false, defaultValue: "0 * * * *"),
+                    PlaceCron = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false, defaultValue: "0 6,18 * * *"),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()"),
+                    AllowedCountryCodes = table.Column<string[]>(type: "text[]", nullable: false),
                     CpvExcludedPrefixes = table.Column<string[]>(type: "text[]", nullable: false),
                     CpvWatchPrefixes = table.Column<string[]>(type: "text[]", nullable: false),
                     CpvWhitelistPrefixes = table.Column<string[]>(type: "text[]", nullable: false),
@@ -277,6 +294,83 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "import_issues",
+                schema: "sourcing",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "gen_random_uuid()"),
+                    RunId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Source = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
+                    SourceId = table.Column<string>(type: "character varying(128)", maxLength: 128, nullable: true),
+                    ErrorCode = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    RawPayload = table.Column<string>(type: "jsonb", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()"),
+                    ResolvedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_import_issues", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_import_issues_import_runs_RunId",
+                        column: x => x.RunId,
+                        principalSchema: "sourcing",
+                        principalTable: "import_runs",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "opportunity_publications",
+                schema: "sourcing",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "gen_random_uuid()"),
+                    OpportunityId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Source = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
+                    SourceId = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    NoticeUrl = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
+                    DocumentUrl = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
+                    RawPayload = table.Column<string>(type: "jsonb", nullable: false),
+                    ContentHash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    FirstSeenAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_opportunity_publications", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_opportunity_publications_opportunities_OpportunityId",
+                        column: x => x.OpportunityId,
+                        principalSchema: "sourcing",
+                        principalTable: "opportunities",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "opportunity_revisions",
+                schema: "sourcing",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "gen_random_uuid()"),
+                    OpportunityId = table.Column<Guid>(type: "uuid", nullable: false),
+                    ContentHash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
+                    RawPayload = table.Column<string>(type: "jsonb", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_opportunity_revisions", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_opportunity_revisions_opportunities_OpportunityId",
+                        column: x => x.OpportunityId,
+                        principalSchema: "sourcing",
+                        principalTable: "opportunities",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
             migrationBuilder.CreateIndex(
                 name: "IX_AspNetRoleClaims_RoleId",
                 schema: "identity",
@@ -322,6 +416,12 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "ix_import_issues_run_id",
+                schema: "sourcing",
+                table: "import_issues",
+                column: "RunId");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_import_runs_active_source",
                 schema: "sourcing",
                 table: "import_runs",
@@ -345,7 +445,7 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                 name: "ix_opportunities_source_source_id",
                 schema: "sourcing",
                 table: "opportunities",
-                columns: ["Source", "SourceId"],
+                columns: SourceIdentityColumns,
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -353,6 +453,25 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                 schema: "sourcing",
                 table: "opportunities",
                 column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_opportunity_publications_opportunity_id",
+                schema: "sourcing",
+                table: "opportunity_publications",
+                column: "OpportunityId");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_opportunity_publications_source_source_id",
+                schema: "sourcing",
+                table: "opportunity_publications",
+                columns: SourceIdentityColumns,
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "ix_opportunity_revisions_opportunity_created_at",
+                schema: "sourcing",
+                table: "opportunity_revisions",
+                columns: RevisionHistoryColumns);
         }
 
         /// <inheritdoc />
@@ -379,11 +498,15 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                 schema: "identity");
 
             migrationBuilder.DropTable(
-                name: "import_runs",
+                name: "import_issues",
                 schema: "sourcing");
 
             migrationBuilder.DropTable(
-                name: "opportunities",
+                name: "opportunity_publications",
+                schema: "sourcing");
+
+            migrationBuilder.DropTable(
+                name: "opportunity_revisions",
                 schema: "sourcing");
 
             migrationBuilder.DropTable(
@@ -401,6 +524,14 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
             migrationBuilder.DropTable(
                 name: "AspNetUsers",
                 schema: "identity");
+
+            migrationBuilder.DropTable(
+                name: "import_runs",
+                schema: "sourcing");
+
+            migrationBuilder.DropTable(
+                name: "opportunities",
+                schema: "sourcing");
         }
     }
 }

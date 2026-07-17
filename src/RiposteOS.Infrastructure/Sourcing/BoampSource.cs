@@ -102,7 +102,7 @@ public sealed partial class BoampSource(
         var keywordQuery = excludedQuery.Length == 0
             ? collectionQuery
             : $"({collectionQuery}) and not ({excludedQuery})";
-        var where = $"dateparution = date'{publicationDate:yyyy-MM-dd}' and ({keywordQuery})";
+        var where = $"dateparution = date'{publicationDate:yyyy-MM-dd}' and nature_libelle in (\"Avis de marché\", \"Rectificatif\") and ({keywordQuery})";
         var requestUri =
             $"records?where={Uri.EscapeDataString(where)}&order_by={Uri.EscapeDataString("idweb asc")}&limit={Math.Clamp(pageSize, 1, 100).ToString(CultureInfo.InvariantCulture)}&offset={Math.Max(offset, 0).ToString(CultureInfo.InvariantCulture)}";
 

@@ -57,6 +57,7 @@ public sealed class BoampSourceTests
         Assert.Contains("search(donnees, \"CPV 48000000\")", Uri.UnescapeDataString(handler.RequestUri.Query));
         Assert.Contains("not (search(objet, \"porte automatique\"))", Uri.UnescapeDataString(handler.RequestUri.Query));
         Assert.Contains("dateparution = date'2026-06-18'", Uri.UnescapeDataString(handler.RequestUri.Query));
+        Assert.Contains("nature_libelle in (\"Avis de marché\", \"Rectificatif\")", Uri.UnescapeDataString(handler.RequestUri.Query));
         Assert.Contains("limit=25", handler.RequestUri.Query);
         Assert.Contains("offset=25", handler.RequestUri.Query);
     }
@@ -71,6 +72,7 @@ public sealed class BoampSourceTests
                 "idweb": "26-eforms",
                 "objet": "Développement applicatif",
                 "dateparution": "2026-07-15",
+                "datelimitereponse": "2026-08-15T12:00:00+02:00",
                 "donnees": "{\"cac:MainCommodityClassification\":{\"cbc:ItemClassificationCode\":{\"@listName\":\"cpv\",\"#text\":\"72262000\"}}}"
               }]
             }
@@ -90,6 +92,234 @@ public sealed class BoampSourceTests
     }
 
     [Fact]
+    public async Task SearchFallsBackToTheEformsParticipationRequestDeadline()
+    {
+        const string payload = """
+            {
+              "total_count": 1,
+              "results": [{
+                "idweb": "26-participation-deadline",
+                "objet": "Développement applicatif",
+                "dateparution": "2026-07-15",
+                "nature_libelle": "Avis de marché",
+                "donnees": "{\"EFORMS\":{\"ContractNotice\":{\"cac:ProcurementProjectLot\":{\"cac:TenderingProcess\":{\"cac:ParticipationRequestReceptionPeriod\":{\"cbc:EndDate\":\"2026-08-04+02:00\",\"cbc:EndTime\":\"12:00:00.000+02:00\"}}}}}}"
+              }]
+            }
+            """;
+        var source = CreateSource(new StubHttpMessageHandler(payload));
+
+        var page = await source.SearchPageAsync(
+            ["développement"],
+            [],
+            [],
+            new DateOnly(2026, 7, 15),
+            0,
+            100,
+            CancellationToken.None);
+
+        var opportunity = Assert.Single(page.Opportunities);
+        Assert.Equal(new DateTimeOffset(2026, 8, 4, 10, 0, 0, TimeSpan.Zero), opportunity.ResponseDeadline);
+        Assert.Equal(0, page.Skipped);
+    }
+
+    [Fact]
+    public async Task SearchPrefersTheFlatDeadlineOverAnEformsFallback()
+    {
+        const string payload = """
+            {
+              "total_count": 1,
+              "results": [{
+                "idweb": "26-flat-deadline",
+                "objet": "Développement applicatif",
+                "dateparution": "2026-07-15",
+                "datelimitereponse": "2026-08-12T09:30:00+02:00",
+                "nature_libelle": "Avis de marché",
+                "donnees": "{\"EFORMS\":{\"ContractNotice\":{\"cac:ProcurementProjectLot\":{\"cac:TenderingProcess\":{\"cac:ParticipationRequestReceptionPeriod\":{\"cbc:EndDate\":\"2026-08-04+02:00\",\"cbc:EndTime\":\"12:00:00.000+02:00\"}}}}}}"
+              }]
+            }
+            """;
+        var source = CreateSource(new StubHttpMessageHandler(payload));
+
+        var page = await source.SearchPageAsync(
+            ["développement"],
+            [],
+            [],
+            new DateOnly(2026, 7, 15),
+            0,
+            100,
+            CancellationToken.None);
+
+        Assert.Equal(
+            new DateTimeOffset(2026, 8, 12, 7, 30, 0, TimeSpan.Zero),
+            Assert.Single(page.Opportunities).ResponseDeadline);
+    }
+
+    [Fact]
+    public async Task SearchDoesNotUseTheAdditionalInformationPeriodAsAResponseDeadline()
+    {
+        const string payload = """
+            {
+              "total_count": 1,
+              "results": [{
+                "idweb": "26-information-deadline",
+                "objet": "Développement applicatif",
+                "dateparution": "2026-07-15",
+                "nature_libelle": "Avis de marché",
+                "donnees": "{\"EFORMS\":{\"ContractNotice\":{\"cac:ProcurementProjectLot\":{\"cac:TenderingProcess\":{\"cac:AdditionalInformationRequestPeriod\":{\"cbc:EndDate\":\"2026-07-24+02:00\",\"cbc:EndTime\":\"12:00:00.000+02:00\"}}}}}}"
+              }]
+            }
+            """;
+        var source = CreateSource(new StubHttpMessageHandler(payload));
+
+        var page = await source.SearchPageAsync(
+            ["développement"],
+            [],
+            [],
+            new DateOnly(2026, 7, 15),
+            0,
+            100,
+            CancellationToken.None);
+
+        Assert.Empty(page.Opportunities);
+        Assert.Equal(1, page.Skipped);
+        var issue = Assert.Single(page.Issues!);
+        Assert.Equal("26-information-deadline", issue.SourceId);
+        Assert.Equal("mapping_format", issue.ErrorCode);
+    }
+
+    [Fact]
+    public async Task SearchMapsLegacyRectificationsAndIncompleteEformsPeriodsSafely()
+    {
+        const string payload = """
+            {
+              "total_count": 6,
+              "results": [
+                {
+                  "idweb": "26-legacy-rectification",
+                  "objet": "Date rectifiée",
+                  "dateparution": "2026-07-15",
+                  "nature_libelle": "Rectificatif",
+                  "donnees": "{\"MAPA\":{\"rectificatif\":{\"lireDate\":\"2026-12-03T11:00:00\"}}}"
+                },
+                {
+                  "idweb": "26-zulu-rectification",
+                  "objet": "Date rectifiée UTC",
+                  "dateparution": "2026-07-15",
+                  "nature_libelle": "Rectificatif",
+                  "donnees": "{\"MAPA\":{\"rectificatif\":{\"lireDate\":\"2026-08-10T11:00:00Z\"}}}"
+                },
+                {
+                  "idweb": "26-multiple-periods",
+                  "objet": "Plusieurs lots",
+                  "dateparution": "2026-07-15",
+                  "nature_libelle": "Avis de marché",
+                  "donnees": "{\"lots\":[{\"cac:TenderSubmissionDeadlinePeriod\":{\"cbc:EndDate\":\"bad\"}},{\"cac:TenderSubmissionDeadlinePeriod\":{\"cbc:EndDate\":\"2026-12-10\"}}]}"
+                },
+                {
+                  "idweb": "26-no-payload",
+                  "objet": "Sans données",
+                  "dateparution": "2026-07-15",
+                  "nature_libelle": "Avis de marché"
+                },
+                {
+                  "idweb": "26-empty-rectification",
+                  "objet": "Date rectifiée vide",
+                  "dateparution": "2026-07-15",
+                  "nature_libelle": "Rectificatif",
+                  "donnees": "{\"lireDate\":\"\"}"
+                },
+                {
+                  "idweb": "26-invalid-rectification",
+                  "objet": "Date rectifiée invalide",
+                  "dateparution": "2026-07-15",
+                  "nature_libelle": "Rectificatif",
+                  "donnees": "{\"lireDate\":\"invalid\"}"
+                }
+              ]
+            }
+            """;
+        var source = CreateSource(new StubHttpMessageHandler(payload));
+
+        var page = await source.SearchPageAsync(
+            ["développement"], [], [], new DateOnly(2026, 7, 15), 0, 100, CancellationToken.None);
+
+        Assert.Collection(
+            page.Opportunities,
+            opportunity => Assert.Equal(
+                new DateTimeOffset(2026, 12, 3, 10, 0, 0, TimeSpan.Zero),
+                opportunity.ResponseDeadline),
+            opportunity => Assert.Equal(
+                new DateTimeOffset(2026, 8, 10, 11, 0, 0, TimeSpan.Zero),
+                opportunity.ResponseDeadline),
+            opportunity => Assert.Equal(
+                new DateTimeOffset(2026, 12, 10, 22, 59, 59, TimeSpan.Zero),
+                opportunity.ResponseDeadline));
+        Assert.Equal(3, page.Skipped);
+        Assert.All(page.Issues!, issue => Assert.Equal("mapping_format", issue.ErrorCode));
+    }
+
+    [Fact]
+    public async Task SearchRejectsMalformedStructuredDeadlinesAndSupportsExplicitOffsets()
+    {
+        const string payload = """
+            {
+              "total_count": 5,
+              "results": [
+                {
+                  "idweb": "26-non-string-flat-date",
+                  "objet": "Date au mauvais format",
+                  "dateparution": "2026-07-15",
+                  "datelimitereponse": 42,
+                  "nature_libelle": "Avis de marché"
+                },
+                {
+                  "idweb": "26-empty-period",
+                  "objet": "Période vide",
+                  "dateparution": "2026-07-15",
+                  "nature_libelle": "Avis de marché",
+                  "donnees": "{\"cac:TenderSubmissionDeadlinePeriod\":{}}"
+                },
+                {
+                  "idweb": "26-invalid-period-date",
+                  "objet": "Date de période invalide",
+                  "dateparution": "2026-07-15",
+                  "nature_libelle": "Avis de marché",
+                  "donnees": "{\"cac:TenderSubmissionDeadlinePeriod\":{\"cbc:EndDate\":\"2026-99-99\",\"cbc:EndTime\":\"11:00:00Z\"}}"
+                },
+                {
+                  "idweb": "26-short-time",
+                  "objet": "Heure incomplète",
+                  "dateparution": "2026-07-15",
+                  "nature_libelle": "Avis de marché",
+                  "donnees": "{\"cac:TenderSubmissionDeadlinePeriod\":{\"cbc:EndDate\":\"2026-12-10\",\"cbc:EndTime\":\"11\"}}"
+                },
+                {
+                  "idweb": "26-negative-offset",
+                  "objet": "Décalage explicite",
+                  "dateparution": "2026-07-15",
+                  "nature_libelle": "Avis de marché",
+                  "donnees": "{\"cac:TenderSubmissionDeadlinePeriod\":{\"cbc:EndDate\":\"2026-08-10-04:00\",\"cbc:EndTime\":\"11:00:00-04:00\"}}"
+                }
+              ]
+            }
+            """;
+        var source = CreateSource(new StubHttpMessageHandler(payload));
+
+        var page = await source.SearchPageAsync(
+            ["développement"], [], [], new DateOnly(2026, 7, 15), 0, 100, CancellationToken.None);
+
+        Assert.Collection(
+            page.Opportunities,
+            opportunity => Assert.Equal(
+                new DateTimeOffset(2026, 12, 10, 22, 59, 59, TimeSpan.Zero),
+                opportunity.ResponseDeadline),
+            opportunity => Assert.Equal(
+                new DateTimeOffset(2026, 8, 10, 15, 0, 0, TimeSpan.Zero),
+                opportunity.ResponseDeadline));
+        Assert.Equal(3, page.Skipped);
+    }
+
+    [Fact]
     public async Task SearchMapsEnrichmentFromAllBoampShapes()
     {
         const string payload = """
@@ -100,6 +330,7 @@ public sealed class BoampSourceTests
                   "idweb": "26-eforms",
                   "objet": "Marché eForms",
                   "dateparution": "2026-07-15",
+                  "datelimitereponse": "2026-08-15T12:00:00+02:00",
                   "procedure_libelle": "Procédure Ouverte",
                   "nature_libelle": "Avis de marché",
                   "donnees": "{\"EFORMS\":{\"ContractNotice\":{\"cac:ProcurementProject\":{\"cbc:Description\":{\"#text\":\"Description eForms\"},\"cbc:ProcurementTypeCode\":{\"@listName\":\"contract-nature\",\"#text\":\"services\"},\"cac:RequestedTenderTotal\":{\"cbc:EstimatedOverallContractAmount\":{\"@currencyID\":\"EUR\",\"#text\":\"900000\"}}},\"cac:TenderingProcess\":{\"cbc:ProcedureCode\":{\"@listName\":\"procurement-procedure-type\",\"#text\":\"open\"}},\"cac:ProcurementProjectLot\":[{\"cac:ProcurementProject\":{\"cac:PlannedPeriod\":{\"cbc:DurationMeasure\":{\"@unitCode\":\"MONTH\",\"#text\":\"12\"}}}},{\"cac:ProcurementProject\":{\"cac:PlannedPeriod\":{\"cbc:DurationMeasure\":{\"@unitCode\":\"MONTH\",\"#text\":\"24\"}}}}]}}}"
@@ -108,6 +339,7 @@ public sealed class BoampSourceTests
                   "idweb": "26-fnsimple",
                   "objet": "Marché FNSimple",
                   "dateparution": "2026-07-15",
+                  "datelimitereponse": "2026-08-15T12:00:00+02:00",
                   "procedure_libelle": "Procédure Ouverte",
                   "nature_libelle": "Avis de marché",
                   "donnees": "{\"FNSimple\":{\"initial\":{\"natureMarche\":{\"description\":\"Description FNSimple\",\"valeurEstimee\":{\"valeur\":\"160000\",\"@devise\":\"EUR\"},\"dureeMois\":\"48\"},\"communication\":{\"urlDocConsul\":\"https://example.test/fnsimple-dce\"}}}}"
@@ -116,6 +348,7 @@ public sealed class BoampSourceTests
                   "idweb": "26-mapa",
                   "objet": "Marché MAPA",
                   "dateparution": "2026-07-15",
+                  "datelimitereponse": "2026-08-15T12:00:00+02:00",
                   "procedure_libelle": "Procédure Adaptée",
                   "nature_libelle": "Rectificatif",
                   "donnees": "{\"MAPA\":{\"rectificatif\":{\"description\":{\"objet\":\"Description MAPA\"},\"duree\":{\"nbMois\":\"18\"},\"organisme\":{\"urlProfilAcheteur\":\"https://example.test/mapa-dce\"}}}}"
@@ -170,12 +403,14 @@ public sealed class BoampSourceTests
                   "idweb": "26-single-lot",
                   "objet": "Lot eForms unique",
                   "dateparution": "2026-07-15",
+                  "datelimitereponse": "2026-08-15T12:00:00+02:00",
                   "donnees": "{\"EFORMS\":{\"ContractNotice\":{\"cac:ProcurementProjectLot\":{\"cac:ProcurementProject\":{\"cac:PlannedPeriod\":{\"cbc:DurationMeasure\":{\"#text\":\"7\"}}}}}}}"
                 },
                 {
                   "idweb": "26-rectificatif",
                   "objet": "Ancien formulaire rectificatif",
                   "dateparution": "2026-07-15",
+                  "datelimitereponse": "2026-08-15T12:00:00+02:00",
                   "procedure_libelle": "Procédure négociée",
                   "nature_libelle": "Services",
                   "donnees": "{\"FNSimple\":{\"rectificatif\":{\"natureMarche\":{\"description\":{\"#text\":\"Description rectifiée\"},\"valeurEstimee\":{\"#text\":\"123000\",\"@devise\":\"USD\"}},\"communication\":{\"urlProfilAch\":\"https://example.test/profil\"}}}}"
@@ -184,6 +419,7 @@ public sealed class BoampSourceTests
                   "idweb": "26-attribution",
                   "objet": "MAPA attribué",
                   "dateparution": "2026-07-15",
+                  "datelimitereponse": "2026-08-15T12:00:00+02:00",
                   "donnees": "{\"MAPA\":{\"attribution\":{\"descriptionReduite\":{\"objet\":\"Description attribuée\"}},\"initial\":{\"duree\":{\"txtLibre\":\"Jusqu'au 31 décembre\"},\"organisme\":{\"urlProfilAcheteur\":\"https://example.test/marches\"}}}}"
                 }
               ]
@@ -322,7 +558,7 @@ public sealed class BoampSourceTests
                   "idweb": "26-valid",
                   "objet": "Valid",
                   "dateparution": "2026-07-15",
-                  "datelimitereponse": "invalid",
+                  "datelimitereponse": "2026-08-15T12:00:00+02:00",
                   "code_departement_prestation": "69",
                   "descripteur_code": null,
                   "descripteur_libelle": 42
@@ -357,7 +593,7 @@ public sealed class BoampSourceTests
                 Assert.Equal("mapping_format", issue.ErrorCode);
             });
         Assert.Equal("Acheteur non renseigné", opportunity.Buyer);
-        Assert.Null(opportunity.ResponseDeadline);
+        Assert.Equal(new DateTimeOffset(2026, 8, 15, 10, 0, 0, TimeSpan.Zero), opportunity.ResponseDeadline);
         Assert.Equal(["69"], opportunity.DepartmentCodes);
         Assert.Empty(opportunity.DescriptorCodes);
         Assert.Empty(opportunity.DescriptorLabels);
@@ -390,7 +626,8 @@ public sealed class BoampSourceTests
           "results": [{
             "idweb": "{{id}}",
             "objet": "Logiciel",
-            "dateparution": "2026-07-15"
+            "dateparution": "2026-07-15",
+            "datelimitereponse": "2026-08-15T12:00:00+02:00"
           }]
         }
         """;

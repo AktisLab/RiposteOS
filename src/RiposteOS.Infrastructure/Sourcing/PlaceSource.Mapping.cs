@@ -20,6 +20,10 @@ public sealed partial class PlaceSource
         @"\b\d{6}-\d{4}\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex DeadlinePattern = new(
+        @"\b\d{2}/\d{2}/\d{4}\s+\d{1,2}:\d{2}\b",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly IReadOnlyDictionary<string, int> FrenchMonths =
         new Dictionary<string, int>(StringComparer.Ordinal)
         {
@@ -110,7 +114,12 @@ public sealed partial class PlaceSource
         var description = GetDetailValue(document, "Objet", "Description") ?? item.Description;
         var procedureType = GetDetailValue(document, "Procédure", "Type de procédure") ?? item.ProcedureType;
         var contractNature = GetDetailValue(document, "Catégorie", "Nature du marché") ?? item.ContractNature;
-        var deadline = ParseDeadline(GetDetailValue(document, "Date limite de remise des plis", "Date limite"));
+        var deadline = ParseDeadline(GetDetailValue(
+                document,
+                "Date et heure limite de remise des plis",
+                "Date limite de remise des plis",
+                "Date limite"))
+            ?? throw new FormatException($"PLACE result '{item.SourceId}' has no response deadline.");
         var cpvCodes = document.QuerySelectorAll("[data-code-cpv]")
             .Select(element => element.GetAttribute("data-code-cpv")!)
             .Select(NormalizeCpvCode)
@@ -202,9 +211,15 @@ public sealed partial class PlaceSource
             return null;
         }
 
+        var match = DeadlinePattern.Match(value);
+        if (!match.Success)
+        {
+            return null;
+        }
+
         var formats = new[] { "dd/MM/yyyy HH:mm", "dd/MM/yyyy H:mm" };
         if (!DateTime.TryParseExact(
-                value.Trim(),
+                match.Value,
                 formats,
                 CultureInfo.GetCultureInfo("fr-FR"),
                 DateTimeStyles.AllowWhiteSpaces,

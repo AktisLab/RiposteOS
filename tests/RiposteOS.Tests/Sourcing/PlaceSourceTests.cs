@@ -267,6 +267,7 @@ public sealed class PlaceSourceTests
             },
             DateTimeOffset.UtcNow);
         var opportunities = new List<SourceOpportunity>();
+        var issues = new List<SourceImportIssue>();
 
         await foreach (var page in source.ReadPagesAsync(
                            settings,
@@ -275,18 +276,12 @@ public sealed class PlaceSourceTests
                            CancellationToken.None))
         {
             opportunities.AddRange(page.Opportunities);
+            issues.AddRange(page.Issues ?? []);
         }
 
-        var opportunity = Assert.Single(opportunities);
-        Assert.Equal("3032556:f4h", opportunity.SourceId);
-        Assert.Equal("Service numérique", opportunity.Buyer);
-        Assert.Null(opportunity.ResponseDeadline);
-        Assert.Equal(["2A", "971"], opportunity.DepartmentCodes);
-        Assert.Empty(opportunity.CpvCodes);
-        Assert.Null(opportunity.DocumentUrl);
-        Assert.Equal(
-            new SourceOpportunityReference(SourcingSource.Ted, "123456-2026"),
-            Assert.Single(opportunity.References));
+        Assert.Empty(opportunities);
+        var issue = Assert.Single(issues);
+        Assert.Equal("mapping_format", issue.ErrorCode);
     }
 
     [Fact]
@@ -391,7 +386,7 @@ public sealed class PlaceSourceTests
                 "departmentCodes": [],
                 "noticeUrl": "https://place.example/app.php/entreprise/consultation/3032559?orgAcronyme=f7h"
               },
-              "detailHtml": "<html><body><span data-code-cpv=\"72200000\">72200000</span></body></html>"
+              "detailHtml": "<html><body><div><label>Date et heure limite de remise des plis :</label><span>20/08/2026 12:00 (heure de Paris)</span></div><span data-code-cpv=\"72200000\">72200000</span></body></html>"
             }
             """;
         var source = CreateSource(new PlaceSequenceHandler());
@@ -400,6 +395,32 @@ public sealed class PlaceSourceTests
 
         Assert.Equal("3032559:f7h", opportunity.SourceId);
         Assert.Equal(["72200000"], opportunity.CpvCodes);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not-a-date")]
+    [InlineData("99/99/2026 12:00")]
+    public void RawIssueEnvelopeRejectsInvalidDeadlines(string deadline)
+    {
+        var source = CreateSource(new PlaceSequenceHandler());
+
+        Assert.Throws<FormatException>(() => source.ParseRawOpportunity(RawIssueEnvelope(deadline)));
+    }
+
+    [Fact]
+    public void RawIssueEnvelopeReadsADeadlineFromTheLabelSibling()
+    {
+        var source = CreateSource(new PlaceSequenceHandler());
+        var payload = RawIssueEnvelope("20/08/2026 12:00")
+            .Replace(
+                "<label>Date et heure limite de remise des plis :</label><span>20/08/2026 12:00</span>",
+                "<label>Date et heure limite de remise des plis :</label><div>20/08/2026 12:00</div>",
+                StringComparison.Ordinal);
+
+        var opportunity = source.ParseRawOpportunity(payload);
+
+        Assert.Equal(new DateTimeOffset(2026, 8, 20, 10, 0, 0, TimeSpan.Zero), opportunity.ResponseDeadline);
     }
 
     public static TheoryData<string> MalformedSearchRows => new()
@@ -522,11 +543,29 @@ public sealed class PlaceSourceTests
           <div><label>Objet</label><span>Description complète du besoin</span></div>
           <div><label>Procédure</label><span>Appel d'offres ouvert</span></div>
           <div><label>Catégorie</label><span>Services</span></div>
-          <div><label>Date limite de remise des plis</label><span class="green bold">20/08/2026 12:00</span></div>
+          <div><label>Date et heure limite de remise des plis :</label><span class="green bold">20/08/2026 12:00 (heure de Paris)</span></div>
           <span data-code-cpv="{{cpv}}">{{cpv}} (Code principal)</span>
           <a id="linkDownloadDce" href="/index.php?page=Entreprise.EntrepriseDemandeTelechargementDce&amp;id=3032554">DCE</a>
           {{(boampReference is null ? string.Empty : $"<a href=\"https://www.boamp.fr/avis/{boampReference}\">BOAMP {boampReference}</a>")}}
         </body></html>
+        """;
+
+    private static string RawIssueEnvelope(string deadline) => $$"""
+        {
+          "searchItem": {
+            "sourceId": "3032559:f7h",
+            "organizationCode": "f7h",
+            "title": "Portail métier",
+            "buyer": "Acheteur",
+            "publicationDate": "2026-07-17",
+            "description": null,
+            "procedureType": null,
+            "contractNature": null,
+            "departmentCodes": [],
+            "noticeUrl": "https://place.example/app.php/entreprise/consultation/3032559?orgAcronyme=f7h"
+          },
+          "detailHtml": "<html><body><div><label>Date et heure limite de remise des plis :</label><span>{{deadline}}</span></div></body></html>"
+        }
         """;
 
     private sealed class PlaceSequenceHandler(params string[] responses) : HttpMessageHandler
