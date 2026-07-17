@@ -17,6 +17,7 @@ public sealed class TedSourceTests
               "totalNoticeCount": 1,
               "notices": [{
                 "publication-number": "487188-2026",
+                "notice-identifier": "3d11385e-9d2c-4649-afb2-a7ee15cf2cce",
                 "publication-date": "2026-07-15+02:00",
                 "notice-title": {
                   "fra": "Développement d'un logiciel métier",
@@ -63,6 +64,9 @@ public sealed class TedSourceTests
         Assert.Equal(1, page.Fetched);
         Assert.Equal(0, page.Skipped);
         Assert.Equal("487188-2026", opportunity.SourceId);
+        Assert.Equal(
+            Guid.Parse("3d11385e-9d2c-4649-afb2-a7ee15cf2cce"),
+            opportunity.EformsNoticeId);
         Assert.Equal("Développement d'un logiciel métier", opportunity.Title);
         Assert.Equal("Métropole de Lyon", opportunity.Buyer);
         Assert.Equal(new DateOnly(2026, 7, 15), opportunity.PublicationDate);
@@ -97,6 +101,7 @@ public sealed class TedSourceTests
             .Select(field => field.GetString())
             .ToArray();
         Assert.Contains("description-proc", requestedFields);
+        Assert.Contains("notice-identifier", requestedFields);
         Assert.Contains("estimated-value-proc", requestedFields);
         Assert.Contains("document-url-lot", requestedFields);
         Assert.Contains("deadline-receipt-request-date-lot", requestedFields);

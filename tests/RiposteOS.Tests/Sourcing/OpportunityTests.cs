@@ -157,6 +157,42 @@ public sealed class OpportunityTests
     }
 
     [Fact]
+    public void EformsNoticeIdentityCanOnlyBeAssignedOnce()
+    {
+        var opportunity = CreateOpportunity();
+        var noticeId = Guid.NewGuid();
+
+        Assert.False(opportunity.IdentifyByEformsNotice(null));
+        Assert.True(opportunity.IdentifyByEformsNotice(noticeId));
+        Assert.False(opportunity.IdentifyByEformsNotice(noticeId));
+        Assert.Throws<InvalidOperationException>(() =>
+            opportunity.IdentifyByEformsNotice(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public void PublicationsAndRevisionsCanBeReassignedDuringCanonicalMerge()
+    {
+        var duplicate = CreateOpportunity();
+        var canonical = CreateOpportunity();
+        var publication = duplicate.AddPublication(
+            SourcingSource.Boamp,
+            "26-1",
+            string.Empty,
+            null,
+            "{}",
+            ImportedAt);
+        var revision = new OpportunityRevision(duplicate, ImportedAt);
+
+        publication.ReassignTo(canonical);
+        revision.ReassignTo(canonical);
+
+        Assert.Same(canonical, publication.Opportunity);
+        Assert.Same(canonical, revision.Opportunity);
+        Assert.Throws<ArgumentNullException>(() => publication.ReassignTo(null!));
+        Assert.Throws<ArgumentNullException>(() => revision.ReassignTo(null!));
+    }
+
+    [Fact]
     public void MatchCanBeReassessedWithoutChangingSourceData()
     {
         var opportunity = CreateOpportunity();

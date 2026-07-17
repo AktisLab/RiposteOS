@@ -74,6 +74,13 @@ public sealed class OpportunityPublication
 
     public DateTimeOffset UpdatedAt { get; private set; }
 
+    public void ReassignTo(Opportunity opportunity)
+    {
+        ArgumentNullException.ThrowIfNull(opportunity);
+        Opportunity = opportunity;
+        OpportunityId = opportunity.Id;
+    }
+
     public bool Refresh(
         string noticeUrl,
         string? documentUrl,

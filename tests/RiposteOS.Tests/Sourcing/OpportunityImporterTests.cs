@@ -12,6 +12,70 @@ namespace RiposteOS.Tests.Sourcing;
 public sealed class OpportunityImporterTests
 {
     [Fact]
+    public async Task SharedEformsNoticeAttachesBoampAndTedToOneOpportunity()
+    {
+        await using var dbContext = new RiposteDbContext(
+            new DbContextOptionsBuilder<RiposteDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
+        var now = new DateTimeOffset(2026, 7, 17, 12, 0, 0, TimeSpan.Zero);
+        var noticeId = Guid.Parse("3d11385e-9d2c-4649-afb2-a7ee15cf2cce");
+        var boamp = new StubOpportunitySource(new SourceOpportunity(
+            "26-68353",
+            "Création d'un site internet",
+            "OPCO 2i",
+            new DateOnly(2026, 7, 17),
+            now.AddDays(30),
+            ["FRA"],
+            ["75"],
+            ["72413000"],
+            [],
+            [],
+            "https://boamp.test/26-68353",
+            "{\"source\":\"boamp\"}",
+            EformsNoticeId: noticeId));
+        var ted = new StubOpportunitySource(new SourceOpportunity(
+            "478263-2026",
+            "France – Services de développement de sites WWW – Création d'un site internet",
+            "OPCO 2i",
+            new DateOnly(2026, 7, 17),
+            now.AddDays(30),
+            ["FRA"],
+            ["75"],
+            ["72413000"],
+            [],
+            [],
+            "https://ted.test/478263-2026",
+            "{\"source\":\"ted\"}",
+            EformsNoticeId: noticeId))
+        {
+            Key = SourcingSource.Ted,
+        };
+        var timeProvider = new FixedTimeProvider(now);
+        var settingsStore = new SourcingSettingsStore(dbContext, timeProvider);
+        await settingsStore.UpdateAsync(TestSourcingProfiles.Create(["site internet"]), CancellationToken.None);
+        var runStore = new ImportRunStore(dbContext, timeProvider);
+        var importer = new OpportunityImporter(
+            [boamp, ted], dbContext, timeProvider, settingsStore, runStore);
+        var job = new SourcingImportJob(importer, runStore, NullLogger<SourcingImportJob>.Instance);
+
+        var boampRun = (await runStore.QueueAsync(SourcingSource.Boamp, CancellationToken.None)).Run;
+        await job.ExecuteAsync(new ImportOpportunities(SourcingSource.Boamp, boampRun.Id), CancellationToken.None);
+        var tedRun = (await runStore.QueueAsync(SourcingSource.Ted, CancellationToken.None)).Run;
+        await job.ExecuteAsync(new ImportOpportunities(SourcingSource.Ted, tedRun.Id), CancellationToken.None);
+
+        dbContext.ChangeTracker.Clear();
+        var opportunity = await dbContext.Set<Opportunity>().SingleAsync();
+        var publications = await dbContext.Set<OpportunityPublication>()
+            .OrderBy(publication => publication.Source)
+            .ToArrayAsync();
+        Assert.Equal(noticeId, opportunity.EformsNoticeId);
+        Assert.Equal("Création d'un site internet", opportunity.Title);
+        Assert.Equal([SourcingSource.Boamp, SourcingSource.Ted], publications.Select(item => item.Source));
+        Assert.Equal(0, (await dbContext.Set<ImportRun>().SingleAsync(run => run.Id == tedRun.Id)).Created);
+    }
+
+    [Fact]
     public async Task ExplicitReferenceAttachesASecondaryPublicationWithoutReplacingCanonicalData()
     {
         await using var dbContext = new RiposteDbContext(

@@ -16,6 +16,7 @@ public sealed partial class TedSource(
     private static readonly string[] RequestedFields =
     [
         "publication-number",
+        "notice-identifier",
         "notice-title",
         "buyer-name",
         "publication-date",

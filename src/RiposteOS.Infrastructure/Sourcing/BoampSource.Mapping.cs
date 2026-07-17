@@ -50,7 +50,27 @@ public sealed partial class BoampSource
                 ? GetAttribute(amount, "@currencyID") ?? GetAttribute(amount, "@devise")
                 : null,
             ExecutionDuration: root is { } durationRoot ? GetDuration(durationRoot) : null,
-            DocumentUrl: root is { } documentRoot ? GetDocumentUrl(documentRoot) : null);
+            DocumentUrl: root is { } documentRoot ? GetDocumentUrl(documentRoot) : null,
+            EformsNoticeId: root is { } noticeRoot ? GetEformsNoticeId(noticeRoot) : null);
+    }
+
+    private static Guid? GetEformsNoticeId(JsonElement root)
+    {
+        var value = FindProperties(root, "cbc:ID")
+            .Where(element => string.Equals(
+                GetAttribute(element, "@schemeName"),
+                "notice-id",
+                StringComparison.OrdinalIgnoreCase))
+            .Select(element => GetText(element))
+            .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+        if (value is null)
+        {
+            return null;
+        }
+
+        return Guid.TryParse(value, out var identifier)
+            ? identifier
+            : throw new FormatException("BOAMP eForms notice identifier is invalid.");
     }
 
     private static string GetRequiredString(JsonElement record, string propertyName) =>

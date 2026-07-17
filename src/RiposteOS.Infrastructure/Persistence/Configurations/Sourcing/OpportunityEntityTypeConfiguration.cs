@@ -15,6 +15,10 @@ public sealed class OpportunityEntityTypeConfiguration : IEntityTypeConfiguratio
         builder.HasIndex(opportunity => new { opportunity.Source, opportunity.SourceId })
             .IsUnique()
             .HasDatabaseName("ix_opportunities_source_source_id");
+        builder.HasIndex(opportunity => opportunity.EformsNoticeId)
+            .IsUnique()
+            .HasFilter("\"EformsNoticeId\" IS NOT NULL")
+            .HasDatabaseName("ix_opportunities_eforms_notice_id");
         builder.Property(opportunity => opportunity.Source).HasMaxLength(32).IsRequired();
         builder.Property(opportunity => opportunity.SourceId).HasMaxLength(64).IsRequired();
         builder.Property(opportunity => opportunity.Title).HasMaxLength(2_000).IsRequired();

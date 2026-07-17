@@ -30,7 +30,21 @@ public sealed partial class TedSource
         Currency: GetEstimatedCurrency(notice),
         ExecutionDuration: GetExecutionDuration(notice),
         DocumentUrl: GetStrings(notice, "document-url-lot").FirstOrDefault()
-            ?? GetStrings(notice, "document-restricted-url-lot").FirstOrDefault());
+            ?? GetStrings(notice, "document-restricted-url-lot").FirstOrDefault(),
+        EformsNoticeId: GetEformsNoticeId(notice));
+
+    private static Guid? GetEformsNoticeId(JsonElement notice)
+    {
+        var value = GetString(notice, "notice-identifier");
+        if (value is null)
+        {
+            return null;
+        }
+
+        return Guid.TryParse(value, out var identifier)
+            ? identifier
+            : throw new FormatException("TED eForms notice identifier is invalid.");
+    }
 
     private static decimal? GetEstimatedValue(JsonElement notice)
     {

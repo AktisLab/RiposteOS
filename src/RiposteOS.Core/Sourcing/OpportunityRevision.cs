@@ -43,4 +43,11 @@ public sealed class OpportunityRevision
     public string RawPayload { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    public void ReassignTo(Opportunity opportunity)
+    {
+        ArgumentNullException.ThrowIfNull(opportunity);
+        Opportunity = opportunity;
+        OpportunityId = opportunity.Id;
+    }
 }

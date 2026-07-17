@@ -366,6 +366,9 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<Guid?>("EformsNoticeId")
+                        .HasColumnType("uuid");
+
                     b.Property<decimal?>("EstimatedValue")
                         .HasPrecision(19, 4)
                         .HasColumnType("numeric(19,4)");
@@ -456,6 +459,11 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .HasColumnName("MatchReasons");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EformsNoticeId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_opportunities_eforms_notice_id")
+                        .HasFilter("\"EformsNoticeId\" IS NOT NULL");
 
                     b.HasIndex("MatchScore")
                         .HasDatabaseName("ix_opportunities_match_score");

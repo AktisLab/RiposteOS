@@ -21,7 +21,7 @@ public sealed class BoampSourceTests
                 "datelimitereponse": "2026-07-17T14:00:00+00:00",
                 "nomacheteur": "Acheteur public",
                 "code_departement": ["69"],
-                "donnees": "{\"OBJET\":{\"CPV\":[{\"PRINCIPAL\":\"72200000\"}]}}",
+                "donnees": "{\"EFORMS\":{\"ContractNotice\":{\"cbc:ID\":{\"@schemeName\":\"notice-id\",\"#text\":\"3d11385e-9d2c-4649-afb2-a7ee15cf2cce\"}}},\"OBJET\":{\"CPV\":[{\"PRINCIPAL\":\"72200000\"}]}}",
                 "descripteur_code": ["186"],
                 "descripteur_libelle": ["Logiciel"],
                 "url_avis": "https://www.boamp.fr/pages/avis/?q=idweb:26-59690"
@@ -49,6 +49,9 @@ public sealed class BoampSourceTests
         Assert.Equal(1, page.Fetched);
         Assert.Equal(0, page.Skipped);
         Assert.Equal("26-59690", opportunity.SourceId);
+        Assert.Equal(
+            Guid.Parse("3d11385e-9d2c-4649-afb2-a7ee15cf2cce"),
+            opportunity.EformsNoticeId);
         Assert.Equal(["FRA"], opportunity.CountryCodes);
         Assert.Equal(["69"], opportunity.DepartmentCodes);
         Assert.Equal(["72200000"], opportunity.CpvCodes);

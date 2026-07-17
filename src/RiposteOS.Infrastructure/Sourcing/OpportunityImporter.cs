@@ -134,6 +134,19 @@ public sealed class OpportunityImporter(
         var legacyOpportunities = await dbContext.Set<Opportunity>()
             .Where(opportunity => opportunity.Source == source && sourceIds.Contains(opportunity.SourceId))
             .ToDictionaryAsync(opportunity => opportunity.SourceId, cancellationToken);
+        var eformsNoticeIds = uniqueOpportunities
+            .Where(opportunity => opportunity.EformsNoticeId is not null)
+            .Select(opportunity => opportunity.EformsNoticeId!.Value)
+            .Distinct()
+            .ToArray();
+        var opportunitiesByEformsNoticeId = eformsNoticeIds.Length == 0
+            ? []
+            : await dbContext.Set<Opportunity>()
+                .Where(opportunity => opportunity.EformsNoticeId != null
+                    && eformsNoticeIds.Contains(opportunity.EformsNoticeId.Value))
+                .ToDictionaryAsync(
+                    opportunity => opportunity.EformsNoticeId!.Value,
+                    cancellationToken);
         var references = uniqueOpportunities
             .SelectMany(opportunity => opportunity.References)
             .Distinct()
@@ -168,6 +181,20 @@ public sealed class OpportunityImporter(
             {
                 var opportunity = publication.Opportunity
                     ?? throw new InvalidOperationException("The publication opportunity was not loaded.");
+                var merged = false;
+                if (sourceOpportunity.EformsNoticeId is { } existingIdentifier
+                    && opportunitiesByEformsNoticeId.TryGetValue(existingIdentifier, out var existingIdentifiedOpportunity)
+                    && existingIdentifiedOpportunity.Id != opportunity.Id)
+                {
+                    await MergeOpportunityAsync(
+                        opportunity,
+                        existingIdentifiedOpportunity,
+                        cancellationToken);
+                    opportunity = existingIdentifiedOpportunity;
+                    merged = true;
+                }
+
+                opportunity.IdentifyByEformsNotice(sourceOpportunity.EformsNoticeId);
                 var publicationChanged = publication.Refresh(
                     sourceOpportunity.NoticeUrl,
                     sourceOpportunity.DocumentUrl,
@@ -175,7 +202,7 @@ public sealed class OpportunityImporter(
                     now);
                 if (opportunity.Source != source || opportunity.SourceId != sourceOpportunity.SourceId)
                 {
-                    if (publicationChanged)
+                    if (publicationChanged || merged)
                     {
                         changed++;
                     }
@@ -241,19 +268,26 @@ public sealed class OpportunityImporter(
                 .Where(opportunityId => opportunityId is not null)
                 .Select(opportunityId => opportunityId!.Value)
                 .Distinct()
-                .ToArray();
-            if (referencedOpportunityIds.Length > 1)
+                .ToList();
+            if (sourceOpportunity.EformsNoticeId is { } eformsNoticeId
+                && opportunitiesByEformsNoticeId.TryGetValue(eformsNoticeId, out var identifiedOpportunity))
+            {
+                referencedOpportunityIds.Add(identifiedOpportunity.Id);
+            }
+
+            var matchedOpportunityIds = referencedOpportunityIds.Distinct().ToArray();
+            if (matchedOpportunityIds.Length > 1)
             {
                 throw new InvalidOperationException(
                     "The publication references several existing opportunities.");
             }
 
             Opportunity? referencedOpportunity = null;
-            if (referencedOpportunityIds.Length == 1)
+            if (matchedOpportunityIds.Length == 1)
             {
-                referencedOpportunity = referencedPublications
-                    .First(item => item.OpportunityId == referencedOpportunityIds[0])
-                    .Opportunity;
+                referencedOpportunity = opportunitiesByEformsNoticeId.Values
+                    .Concat(referencedPublications.Select(item => item.Opportunity!))
+                    .First(item => item.Id == matchedOpportunityIds[0]);
             }
 
             if (referencedOpportunity is not null)
@@ -307,7 +341,8 @@ public sealed class OpportunityImporter(
                 sourceOpportunity.EstimatedValue,
                 sourceOpportunity.Currency,
                 sourceOpportunity.ExecutionDuration,
-                sourceOpportunity.DocumentUrl);
+                sourceOpportunity.DocumentUrl,
+                sourceOpportunity.EformsNoticeId);
             createdOpportunity.AddPublication(
                 source,
                 sourceOpportunity.SourceId,
@@ -339,5 +374,47 @@ public sealed class OpportunityImporter(
                 cancellationToken,
                 retryOnConflict: false);
         }
+    }
+
+    private async Task MergeOpportunityAsync(
+        Opportunity duplicate,
+        Opportunity canonical,
+        CancellationToken cancellationToken)
+    {
+        if (canonical.Status == OpportunityStatus.ToQualify)
+        {
+            if (duplicate.Status == OpportunityStatus.Retained)
+            {
+                canonical.Retain();
+            }
+            else if (duplicate.Status == OpportunityStatus.Dismissed)
+            {
+                canonical.Dismiss();
+            }
+        }
+        else if (duplicate.Status != OpportunityStatus.ToQualify
+            && duplicate.Status != canonical.Status)
+        {
+            throw new InvalidOperationException(
+                "The duplicate eForms notice has conflicting qualification statuses.");
+        }
+
+        var publications = await dbContext.Set<OpportunityPublication>()
+            .Where(publication => publication.OpportunityId == duplicate.Id)
+            .ToArrayAsync(cancellationToken);
+        foreach (var publication in publications)
+        {
+            publication.ReassignTo(canonical);
+        }
+
+        var revisions = await dbContext.Set<OpportunityRevision>()
+            .Where(revision => revision.OpportunityId == duplicate.Id)
+            .ToArrayAsync(cancellationToken);
+        foreach (var revision in revisions)
+        {
+            revision.ReassignTo(canonical);
+        }
+
+        dbContext.Set<Opportunity>().Remove(duplicate);
     }
 }

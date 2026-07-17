@@ -70,7 +70,8 @@ public sealed class Opportunity
         decimal? estimatedValue = null,
         string? currency = null,
         string? executionDuration = null,
-        string? documentUrl = null)
+        string? documentUrl = null,
+        Guid? eformsNoticeId = null)
     {
         Id = Guid.Empty;
         Source = SourcingSource.Normalize(source);
@@ -95,6 +96,7 @@ public sealed class Opportunity
         Currency = NormalizeNullable(currency);
         ExecutionDuration = NormalizeNullable(executionDuration);
         DocumentUrl = NormalizeNullable(documentUrl);
+        EformsNoticeId = eformsNoticeId;
         RawPayload = NormalizeRequired(rawPayload, nameof(rawPayload));
         ContentHash = ComputeContentHash(
             Title,
@@ -164,6 +166,8 @@ public sealed class Opportunity
 
     public string? DocumentUrl { get; private set; }
 
+    public Guid? EformsNoticeId { get; private set; }
+
     public string NoticeUrl { get; private set; }
 
     public string RawPayload { get; private set; }
@@ -173,6 +177,22 @@ public sealed class Opportunity
     public DateTimeOffset ImportedAt { get; private set; }
 
     public DateTimeOffset UpdatedAt { get; private set; }
+
+    public bool IdentifyByEformsNotice(Guid? eformsNoticeId)
+    {
+        if (eformsNoticeId is null || EformsNoticeId == eformsNoticeId)
+        {
+            return false;
+        }
+
+        if (EformsNoticeId is not null)
+        {
+            throw new InvalidOperationException("The eForms notice identifier cannot be changed.");
+        }
+
+        EformsNoticeId = eformsNoticeId;
+        return true;
+    }
 
     public bool RefreshFromSource(
         string title,

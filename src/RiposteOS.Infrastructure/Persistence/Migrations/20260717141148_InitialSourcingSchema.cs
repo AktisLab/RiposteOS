@@ -111,6 +111,7 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                     Currency = table.Column<string>(type: "character varying(3)", maxLength: 3, nullable: true),
                     ExecutionDuration = table.Column<string>(type: "text", nullable: true),
                     DocumentUrl = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true),
+                    EformsNoticeId = table.Column<Guid>(type: "uuid", nullable: true),
                     NoticeUrl = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
                     RawPayload = table.Column<string>(type: "jsonb", nullable: false),
                     ContentHash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
@@ -434,6 +435,14 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                 schema: "sourcing",
                 table: "import_runs",
                 column: "QueuedAt");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_opportunities_eforms_notice_id",
+                schema: "sourcing",
+                table: "opportunities",
+                column: "EformsNoticeId",
+                unique: true,
+                filter: "\"EformsNoticeId\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_opportunities_match_score",
