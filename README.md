@@ -12,6 +12,18 @@
       <img src="https://shieldcn.dev/group/badge/.NET-10-512BD4+badge/React-19-61DAFB+badge/PostgreSQL-17-4169E1+github/license/AktisLab/RiposteOS.svg?variant=secondary&mode=light" alt=".NET 10, React 19, PostgreSQL 17 et licence" />
     </picture>
   </a>
+  <a href="https://github.com/AktisLab/RiposteOS/actions/workflows/ci.yml">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/ci/AktisLab/RiposteOS.svg?workflow=ci.yml&amp;branch=main&amp;variant=secondary&amp;mode=dark" />
+      <img src="https://shieldcn.dev/github/ci/AktisLab/RiposteOS.svg?workflow=ci.yml&amp;branch=main&amp;variant=secondary&amp;mode=light" alt="Statut de la CI" />
+    </picture>
+  </a>
+  <a href="https://github.com/AktisLab/RiposteOS/actions/workflows/ci.yml">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/badge/dynamic/json.svg?url=https%3A%2F%2Fraw.githubusercontent.com%2FAktisLab%2FRiposteOS%2Fbadges%2F.github%2Fbadges%2Fcoverage.json&amp;query=%24.lineRate&amp;label=couverture&amp;variant=secondary&amp;color=e84d3d&amp;mode=dark" />
+      <img src="https://shieldcn.dev/badge/dynamic/json.svg?url=https%3A%2F%2Fraw.githubusercontent.com%2FAktisLab%2FRiposteOS%2Fbadges%2F.github%2Fbadges%2Fcoverage.json&amp;query=%24.lineRate&amp;label=couverture&amp;variant=secondary&amp;color=e84d3d&amp;mode=light" alt="Couverture backend" />
+    </picture>
+  </a>
 </p>
 
 RiposteOS est une plateforme open source, self-hosted et alimentée par l'IA

@@ -1,6 +1,6 @@
 FROM node:24-alpine
 
-RUN npm install --global pnpm@11.13.0
+RUN npm install --global pnpm@11.13.1
 
 WORKDIR /app
 
