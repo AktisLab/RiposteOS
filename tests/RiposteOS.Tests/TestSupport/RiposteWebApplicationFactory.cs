@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using RiposteOS.Infrastructure.Documents;
 using RiposteOS.Infrastructure.Persistence;
 
 namespace RiposteOS.Tests.TestSupport;
@@ -16,6 +17,8 @@ public sealed class RiposteWebApplicationFactory : WebApplicationFactory<Program
     public RecordingBackgroundJobClient Jobs { get; } = new();
 
     public RecordingRecurringJobManager RecurringJobs { get; } = new();
+
+    public TestObjectStorage ObjectStorage { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -30,6 +33,8 @@ public sealed class RiposteWebApplicationFactory : WebApplicationFactory<Program
             services.AddSingleton<IBackgroundJobClient>(Jobs);
             services.RemoveAll<IRecurringJobManager>();
             services.AddSingleton<IRecurringJobManager>(RecurringJobs);
+            services.RemoveAll<IObjectStorage>();
+            services.AddSingleton<IObjectStorage>(ObjectStorage);
         });
     }
 
@@ -37,6 +42,7 @@ public sealed class RiposteWebApplicationFactory : WebApplicationFactory<Program
     {
         Jobs.Reset();
         RecurringJobs.Reset();
+        ObjectStorage.Reset();
         await using var scope = Services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<RiposteDbContext>();
         await dbContext.Database.EnsureDeletedAsync();

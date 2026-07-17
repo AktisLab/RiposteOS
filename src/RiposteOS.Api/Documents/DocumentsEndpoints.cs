@@ -25,7 +25,7 @@ public static class DocumentsEndpoints
             var validation = await ValidateUploadAsync(file, options.Value.MaxDocumentSizeBytes, cancellationToken);
             if (validation.Error is not null)
             {
-                return validation.StatusCode == StatusCodes.Status413PayloadTooLarge
+                return validation.StatusCode is StatusCodes.Status413PayloadTooLarge or StatusCodes.Status415UnsupportedMediaType
                     ? TypedResults.StatusCode(validation.StatusCode)
                     : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = [validation.Error] });
             }

@@ -7,6 +7,7 @@ internal sealed class DocumentGridifyMapper : GridifyMapper<StoredDocument>
 {
     public DocumentGridifyMapper()
     {
+        AddMap("id", document => document.Id);
         AddMap("originalFileName", document => document.OriginalFileName);
         AddMap("contentType", document => document.ContentType);
         AddMap("size", document => document.Size);
