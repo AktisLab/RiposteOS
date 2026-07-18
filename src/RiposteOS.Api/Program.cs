@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http.Features;
+using RiposteOS.Api.Consultations;
 using RiposteOS.Api.Documents;
 using RiposteOS.Api.Sourcing;
 using RiposteOS.Infrastructure.Documents;
@@ -45,6 +46,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 app.MapSourcingEndpoints();
 app.MapDocumentsEndpoints();
+app.MapConsultationsEndpoints();
 
 app.Run();
 

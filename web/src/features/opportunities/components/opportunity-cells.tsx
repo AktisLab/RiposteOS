@@ -1,26 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarClock } from 'lucide-react'
-import * as m from 'motion/react-m'
+import { useNavigate } from '@tanstack/react-router'
+import {
+  BookOpenCheck,
+  CalendarClock,
+  Loader2,
+  RotateCcw,
+  X,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { cpvCatalogQueryKey, loadCpvCatalog } from '@/lib/cpv-catalog'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { consultationsQueryRoot } from '@/features/consultations/api'
 import {
   type Opportunity,
   type OpportunityStatus,
   opportunitiesQueryRoot,
+  promoteOpportunity,
   updateOpportunityStatus,
 } from '../api'
 import { presentMatchReason } from '../match-reason'
@@ -32,12 +34,6 @@ const dateTimeFormatter = new Intl.DateTimeFormat('fr-FR', {
   hour: '2-digit',
   minute: '2-digit',
 })
-
-const statusLabels: Record<OpportunityStatus, string> = {
-  ToQualify: 'À qualifier',
-  Retained: 'Retenue',
-  Dismissed: 'Écartée',
-}
 
 export function MatchScoreCell({
   opportunity,
@@ -138,47 +134,95 @@ export function OpportunityStatusCell({
 }: {
   opportunity: Opportunity
 }) {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const mutation = useMutation({
+  const statusMutation = useMutation({
     mutationFn: (status: OpportunityStatus) =>
       updateOpportunityStatus(opportunity.id, status),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: opportunitiesQueryRoot }),
+    onSuccess: (_, status) => {
+      void queryClient.invalidateQueries({ queryKey: opportunitiesQueryRoot })
+      toast.success(
+        status === 'Dismissed'
+          ? 'Opportunité écartée'
+          : 'Opportunité à réexaminer'
+      )
+    },
     onError: (error) => toast.error(error.message),
   })
+  const promotionMutation = useMutation({
+    mutationFn: () => promoteOpportunity(opportunity.id),
+    onSuccess: (consultation) => {
+      void queryClient.invalidateQueries({ queryKey: opportunitiesQueryRoot })
+      void queryClient.invalidateQueries({ queryKey: consultationsQueryRoot })
+      toast.success('Étude ouverte')
+      void navigate({
+        to: '/consultations/$consultationId',
+        params: { consultationId: consultation.id },
+      })
+    },
+    onError: (error) => toast.error(error.message),
+  })
+  const pending = statusMutation.isPending || promotionMutation.isPending
 
-  const statusTone = {
-    ToQualify: 'bg-amber-500',
-    Retained: 'bg-emerald-500',
-    Dismissed: 'bg-muted-foreground',
-  }[opportunity.status]
+  if (opportunity.status === 'Retained') {
+    return (
+      <Badge
+        variant='outline'
+        className='gap-1.5 text-emerald-700 dark:text-emerald-400'
+      >
+        <BookOpenCheck />
+        Étude ouverte
+      </Badge>
+    )
+  }
+
+  if (opportunity.status === 'Dismissed') {
+    return (
+      <Button
+        variant='outline'
+        size='sm'
+        onClick={() => statusMutation.mutate('ToQualify')}
+        disabled={pending}
+      >
+        {statusMutation.isPending ? (
+          <Loader2 className='animate-spin' />
+        ) : (
+          <RotateCcw />
+        )}
+        Réexaminer
+      </Button>
+    )
+  }
 
   return (
-    <div className='w-fit'>
-      <Select
-        value={opportunity.status}
-        onValueChange={(status) => mutation.mutate(status as OpportunityStatus)}
-        disabled={mutation.isPending}
+    <div className='flex items-center gap-1.5'>
+      <Button
+        size='sm'
+        onClick={() => promotionMutation.mutate()}
+        disabled={pending}
       >
-        <SelectTrigger size='sm' className='w-32 bg-background/80'>
-          <m.span
-            key={opportunity.status}
-            aria-hidden='true'
-            className={cn('size-1.5 rounded-full', statusTone)}
-            initial={{ opacity: 0.4, scale: 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.14, ease: 'easeOut' }}
-          />
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {Object.entries(statusLabels).map(([status, label]) => (
-            <SelectItem key={status} value={status}>
-              {label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        {promotionMutation.isPending ? (
+          <Loader2 className='animate-spin' />
+        ) : (
+          <BookOpenCheck />
+        )}
+        {promotionMutation.isPending ? 'Ouverture…' : 'Étudier'}
+      </Button>
+      <Button
+        variant='ghost'
+        size='icon'
+        className='size-8'
+        onClick={() => statusMutation.mutate('Dismissed')}
+        disabled={pending}
+        aria-label={`Écarter l’opportunité ${opportunity.title}`}
+        title='Écarter'
+      >
+        {statusMutation.isPending ? (
+          <Loader2 className='animate-spin' />
+        ) : (
+          <X />
+        )}
+      </Button>
     </div>
   )
 }

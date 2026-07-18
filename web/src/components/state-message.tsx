@@ -4,11 +4,18 @@ type StateMessageProps = {
   icon: React.ReactNode
   children: React.ReactNode
   className?: string
+  role?: 'status' | 'alert'
 }
 
-export function StateMessage({ icon, children, className }: StateMessageProps) {
+export function StateMessage({
+  icon,
+  children,
+  className,
+  role,
+}: StateMessageProps) {
   return (
     <div
+      role={role}
       className={cn(
         'flex min-h-64 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground',
         className

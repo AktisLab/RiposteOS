@@ -2,6 +2,7 @@ using Hangfire;
 using Gridify;
 using Gridify.EntityFramework;
 using Microsoft.EntityFrameworkCore;
+using RiposteOS.Core.Consultations;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Infrastructure.Persistence;
 
@@ -208,25 +209,36 @@ public sealed class SourcingFacade(
         return settings;
     }
 
-    public async Task<Opportunity?> UpdateOpportunityStatusAsync(
+    public async Task<OpportunityStatusUpdateResult> UpdateOpportunityStatusAsync(
         Guid id,
         OpportunityStatus status,
         CancellationToken cancellationToken)
     {
-        var opportunity = await dbContext.Set<Opportunity>()
-            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (status == OpportunityStatus.Retained)
+        {
+            throw new ArgumentOutOfRangeException(nameof(status));
+        }
+
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        var opportunity = await GetOpportunityForUpdateAsync(id, cancellationToken);
         if (opportunity is null)
         {
-            return null;
+            return new OpportunityStatusUpdateResult(null, false);
+        }
+
+        if (await dbContext.Set<Consultation>()
+            .AsNoTracking()
+            .AnyAsync(consultation => consultation.OpportunityId == id, cancellationToken))
+        {
+            return new OpportunityStatusUpdateResult(opportunity, true);
         }
 
         switch (status)
         {
             case OpportunityStatus.ToQualify:
                 opportunity.ReturnToQualification();
-                break;
-            case OpportunityStatus.Retained:
-                opportunity.Retain();
                 break;
             case OpportunityStatus.Dismissed:
                 opportunity.Dismiss();
@@ -236,6 +248,21 @@ public sealed class SourcingFacade(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        return opportunity;
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        return new OpportunityStatusUpdateResult(opportunity, false);
     }
+
+    private Task<Opportunity?> GetOpportunityForUpdateAsync(
+        Guid id,
+        CancellationToken cancellationToken) =>
+        dbContext.Database.IsNpgsql()
+            ? dbContext.Set<Opportunity>()
+                .FromSqlInterpolated($"SELECT * FROM sourcing.opportunities WHERE \"Id\" = {id} FOR UPDATE")
+                .SingleOrDefaultAsync(cancellationToken)
+            : dbContext.Set<Opportunity>()
+                .SingleOrDefaultAsync(opportunity => opportunity.Id == id, cancellationToken);
 }

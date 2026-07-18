@@ -5,8 +5,8 @@ import {
   SidebarHeader,
   SidebarRail,
 } from '@/components/ui/sidebar'
-import { sidebarData } from './data/sidebar-data'
 import { AppTitle } from './app-title'
+import { sidebarData } from './data/sidebar-data'
 import { NavGroup } from './nav-group'
 
 export function AppSidebar() {

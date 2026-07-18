@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using RiposteOS.Infrastructure.Consultations;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Core.Documents;
 using RiposteOS.Infrastructure.Documents;
@@ -66,6 +67,7 @@ public static class DependencyInjection
         });
         services.AddScoped<IObjectStorage, S3ObjectStorage>();
         services.AddScoped<DocumentsFacade>();
+        services.AddScoped<ConsultationsFacade>();
         services.AddOptions<BoampOptions>()
             .Bind(configuration.GetSection(BoampOptions.SectionName))
             .Validate(options => Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out _), "Boamp:BaseUrl must be an absolute URL.")

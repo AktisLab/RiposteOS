@@ -23,7 +23,9 @@ export function ModulePlaceholder({ title }: ModulePlaceholderProps) {
             <Construction className='size-6 text-muted-foreground' />
           </div>
           <h1 className='text-2xl font-bold tracking-tight'>{title}</h1>
-          <p className='text-muted-foreground'>Aucune fonctionnalité pour le moment.</p>
+          <p className='text-muted-foreground'>
+            Aucune fonctionnalité pour le moment.
+          </p>
         </div>
       </Main>
     </>

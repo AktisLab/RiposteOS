@@ -168,7 +168,7 @@ export function createOpportunityColumns(
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title='Statut' />
       ),
-      meta: { label: 'Statut', className: 'min-w-40' },
+      meta: { label: 'Statut', className: 'min-w-52' },
       cell: ({ row }) => <OpportunityStatusCell opportunity={row.original} />,
     },
     {

@@ -54,8 +54,8 @@ const sourceOptions = [
   { label: 'PLACE', value: 'place', icon: PlaceLogo },
 ]
 const statusOptions = [
-  { label: 'À qualifier', value: 'ToQualify', icon: Inbox },
-  { label: 'Retenue', value: 'Retained', icon: CircleCheck },
+  { label: 'À examiner', value: 'ToQualify', icon: Inbox },
+  { label: 'Étude ouverte', value: 'Retained', icon: CircleCheck },
   { label: 'Écartée', value: 'Dismissed', icon: CircleX },
 ]
 
@@ -255,7 +255,7 @@ export function OpportunitiesTable({
                   })
                 }
               >
-                <Inbox />À qualifier
+                <Inbox />À examiner
               </QuickFilter>
             </div>
           </div>

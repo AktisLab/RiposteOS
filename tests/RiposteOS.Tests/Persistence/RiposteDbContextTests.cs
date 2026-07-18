@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.AspNetCore.Identity;
+using RiposteOS.Core.Consultations;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Core.Documents;
 using RiposteOS.Infrastructure.Persistence;
@@ -31,6 +32,14 @@ public sealed class RiposteDbContextTests
         var run = AssertEntity<ImportRun>(dbContext.Model, "import_runs", DatabaseSchemas.Sourcing);
         var syncState = AssertEntity<SourcingSyncState>(dbContext.Model, "sourcing_sync_states", DatabaseSchemas.Sourcing);
         var document = AssertEntity<StoredDocument>(dbContext.Model, "stored_documents", DatabaseSchemas.Documents);
+        var consultation = AssertEntity<Consultation>(
+            dbContext.Model,
+            "consultations",
+            DatabaseSchemas.Consultations);
+        var consultationDocument = AssertEntity<ConsultationDocument>(
+            dbContext.Model,
+            "consultation_documents",
+            DatabaseSchemas.Consultations);
 
         Assert.Equal("jsonb", opportunity.FindProperty(nameof(Opportunity.RawPayload))?.GetColumnType());
         Assert.Equal("text[]", opportunity.FindProperty("_countryCodes")?.GetColumnType());
@@ -59,6 +68,21 @@ public sealed class RiposteDbContextTests
         Assert.Equal(ValueGenerated.Never, syncState.FindProperty(nameof(SourcingSyncState.Source))?.ValueGenerated);
         Assert.Equal("bigint", document.FindProperty(nameof(StoredDocument.Size))?.GetColumnType());
         Assert.Contains(document.GetIndexes(), index => index.IsUnique);
+        Assert.Equal(DatabaseFunctions.NewGuid, consultation.FindProperty(nameof(Consultation.Id))?.GetDefaultValueSql());
+        Assert.Equal(DatabaseFunctions.Now, consultation.FindProperty(nameof(Consultation.CreatedAt))?.GetDefaultValueSql());
+        Assert.Contains(
+            consultation.GetIndexes(),
+            index => index.IsUnique
+                && index.GetFilter() == "\"OpportunityId\" IS NOT NULL");
+        Assert.Equal(
+            DeleteBehavior.Restrict,
+            Assert.Single(consultation.GetForeignKeys()).DeleteBehavior);
+        Assert.Equal(typeof(string), consultationDocument.FindProperty(nameof(ConsultationDocument.Kind))?.GetProviderClrType());
+        Assert.Equal(DatabaseFunctions.Now, consultationDocument.FindProperty(nameof(ConsultationDocument.AddedAt))?.GetDefaultValueSql());
+        Assert.Equal(2, consultationDocument.FindPrimaryKey()?.Properties.Count);
+        Assert.All(
+            consultationDocument.GetForeignKeys(),
+            foreignKey => Assert.Equal(DeleteBehavior.Restrict, foreignKey.DeleteBehavior));
 
         var identityUser = dbContext.Model.FindEntityType(typeof(IdentityUser<Guid>));
         var identityRole = dbContext.Model.FindEntityType(typeof(IdentityRole<Guid>));

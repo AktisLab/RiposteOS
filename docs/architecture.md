@@ -15,6 +15,12 @@ un worker et une application web React.
 Une seule base PostgreSQL stocke les données métier, Identity, Hangfire et les
 vecteurs pgvector. Les documents binaires resteront hors base.
 
+Les tables sont séparées par un petit nombre de schémas métier explicites :
+`sourcing` pour les opportunités et imports, `documents` pour les métadonnées
+des fichiers stockés hors base, et `consultations` pour les consultations et
+leurs rattachements documentaires. Identity, l'historique EF et Hangfire
+conservent leurs schémas techniques dédiés.
+
 ## Règles
 
 - Organisation par module métier puis par cas d'usage.

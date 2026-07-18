@@ -246,7 +246,7 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
     }
 
     [Fact]
-    public async Task OpportunityStatusCanBeQualifiedAndValidated()
+    public async Task OpportunityStatusCanBeDismissedReexaminedAndValidated()
     {
         await factory.ResetAsync();
         var importedAt = new DateTimeOffset(2026, 7, 15, 10, 0, 0, TimeSpan.Zero);
@@ -273,7 +273,6 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
         using var retainedResponse = await client.PutAsJsonAsync(
             $"/api/opportunities/{opportunity.Id}/status",
             new OpportunityStatusRequest("Retained"));
-        var retained = await retainedResponse.Content.ReadFromJsonAsync<OpportunityListItem>();
         using var dismissedResponse = await client.PutAsJsonAsync(
             $"/api/opportunities/{opportunity.Id}/status",
             new OpportunityStatusRequest("Dismissed"));
@@ -289,8 +288,7 @@ public sealed class SourcingEndpointsTests(RiposteWebApplicationFactory factory)
             $"/api/opportunities/{Guid.NewGuid()}/status",
             new OpportunityStatusRequest("Dismissed"));
 
-        Assert.Equal(HttpStatusCode.OK, retainedResponse.StatusCode);
-        Assert.Equal("Retained", retained!.Status);
+        Assert.Equal(HttpStatusCode.BadRequest, retainedResponse.StatusCode);
         Assert.Equal("Dismissed", dismissed!.Status);
         Assert.Equal("ToQualify", toQualify!.Status);
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);

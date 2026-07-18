@@ -39,7 +39,6 @@ export function SettingsOverview() {
             <ChevronRight className='size-5 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground' />
           </Link>
         </div>
-
       </section>
     </>
   )

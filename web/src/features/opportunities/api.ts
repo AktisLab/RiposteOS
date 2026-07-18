@@ -1,5 +1,6 @@
 import { apiRequest } from '@/lib/api-client'
 import { type SourcingSource } from '@/lib/sourcing-source'
+import { type Consultation } from '@/features/consultations/api'
 import { type OpportunityListQuery } from './gridify'
 
 export type Opportunity = {
@@ -105,6 +106,12 @@ export const updateOpportunityStatus = (
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status }),
     errorMessage: "Impossible de modifier le statut de l'opportunité.",
+  })
+
+export const promoteOpportunity = (id: string) =>
+  apiRequest<Consultation>(`/api/opportunities/${id}/consultation`, {
+    method: 'POST',
+    errorMessage: "Impossible d'ouvrir l'étude de cette opportunité.",
   })
 
 export const importSource = (source: OpportunitySource) =>

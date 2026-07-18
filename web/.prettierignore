@@ -17,3 +17,6 @@
 
 # Ignore auto generated routeTree.gen.ts
 /src/routeTree.gen.ts
+
+# Ignore generated CPV catalog
+/src/data/cpv-2008-fr.json

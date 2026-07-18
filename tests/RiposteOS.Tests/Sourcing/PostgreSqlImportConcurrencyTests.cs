@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
+using RiposteOS.Core.Consultations;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Infrastructure.Sourcing;
@@ -130,6 +131,9 @@ public sealed class PostgreSqlImportConcurrencyTests(PostgreSqlFixture fixture)
             tedOpportunity,
             new OpportunityRevision(tedOpportunity, now.AddMinutes(1)));
         await dbContext.SaveChangesAsync();
+        var consultation = Consultation.FromOpportunity(tedOpportunity, now.AddMinutes(1));
+        dbContext.Add(consultation);
+        await dbContext.SaveChangesAsync();
 
         var timeProvider = new FixedTimeProvider(now.AddMinutes(2));
         var runStore = new ImportRunStore(dbContext, timeProvider);
@@ -165,6 +169,9 @@ public sealed class PostgreSqlImportConcurrencyTests(PostgreSqlFixture fixture)
         Assert.Equal(noticeId, canonical.EformsNoticeId);
         Assert.Equal(OpportunityStatus.Retained, canonical.Status);
         Assert.Equal(2, await dbContext.Set<OpportunityPublication>().CountAsync());
+        Assert.Equal(
+            canonical.Id,
+            (await dbContext.Set<Consultation>().SingleAsync()).OpportunityId);
         Assert.All(
             await dbContext.Set<OpportunityRevision>().ToArrayAsync(),
             revision => Assert.Equal(canonical.Id, revision.OpportunityId));
@@ -256,8 +263,8 @@ public sealed class PostgreSqlImportConcurrencyTests(PostgreSqlFixture fixture)
         var secondImporter = CreateImporter(secondContext, new RetrySource(barrier), timeProvider);
 
         var results = await Task.WhenAll(
-            firstImporter.RetryIssueAsync(firstIssueId, CancellationToken.None),
-            secondImporter.RetryIssueAsync(secondIssueId, CancellationToken.None));
+            Task.Run(() => firstImporter.RetryIssueAsync(firstIssueId, CancellationToken.None)),
+            Task.Run(() => secondImporter.RetryIssueAsync(secondIssueId, CancellationToken.None)));
 
         Assert.All(results, result => Assert.True(result!.Resolved));
         await using var verificationContext = PostgreSqlFixture.CreateContext(connectionString);

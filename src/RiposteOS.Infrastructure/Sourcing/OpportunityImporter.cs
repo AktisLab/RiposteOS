@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using RiposteOS.Core.Consultations;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Infrastructure.Persistence;
 
@@ -381,6 +382,19 @@ public sealed class OpportunityImporter(
         Opportunity canonical,
         CancellationToken cancellationToken)
     {
+        var duplicateConsultation = await dbContext.Set<Consultation>()
+            .SingleOrDefaultAsync(
+                consultation => consultation.OpportunityId == duplicate.Id,
+                cancellationToken);
+        if (duplicateConsultation is not null
+            && await dbContext.Set<Consultation>().AnyAsync(
+                consultation => consultation.OpportunityId == canonical.Id,
+                cancellationToken))
+        {
+            throw new InvalidOperationException(
+                "The duplicate and canonical opportunities both have a consultation.");
+        }
+
         if (canonical.Status == OpportunityStatus.ToQualify)
         {
             if (duplicate.Status == OpportunityStatus.Retained)
@@ -397,6 +411,14 @@ public sealed class OpportunityImporter(
         {
             throw new InvalidOperationException(
                 "The duplicate eForms notice has conflicting qualification statuses.");
+        }
+
+        if (duplicateConsultation is not null)
+        {
+            duplicateConsultation.ReassignToOpportunity(
+                canonical.Id,
+                timeProvider.GetUtcNow());
+            canonical.Retain();
         }
 
         var publications = await dbContext.Set<OpportunityPublication>()

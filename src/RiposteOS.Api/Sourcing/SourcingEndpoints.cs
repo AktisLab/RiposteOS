@@ -86,18 +86,28 @@ public static class SourcingEndpoints
             CancellationToken cancellationToken) =>
         {
             if (!Enum.TryParse<OpportunityStatus>(request.Status, true, out var status)
-                || !Enum.IsDefined(status))
+                || !Enum.IsDefined(status)
+                || status == OpportunityStatus.Retained)
             {
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    [nameof(request.Status)] = ["Le statut demandé est invalide."],
+                    [nameof(request.Status)] =
+                        ["Le statut demandé est invalide. Utilisez l’action « Étudier » pour ouvrir une consultation."],
                 });
             }
 
-            var opportunity = await sourcing.UpdateOpportunityStatusAsync(id, status, cancellationToken);
-            return opportunity is null
-                ? TypedResults.NotFound()
-                : TypedResults.Ok(SourcingMapper.ToOpportunityListItem(opportunity));
+            var result = await sourcing.UpdateOpportunityStatusAsync(id, status, cancellationToken);
+            if (result.Opportunity is null)
+            {
+                return TypedResults.NotFound();
+            }
+
+            return result.ConsultationConflict
+                ? TypedResults.Conflict(new
+                {
+                    message = "Cette opportunité ne peut plus être réexaminée ou écartée car une étude est ouverte.",
+                })
+                : TypedResults.Ok(SourcingMapper.ToOpportunityListItem(result.Opportunity));
         });
 
         group.MapGet("/sourcing/imports", async Task<IResult> (

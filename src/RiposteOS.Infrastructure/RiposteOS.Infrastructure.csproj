@@ -5,6 +5,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Update="Consultations/ConsultationsFacade.Contracts.cs">
+      <DependentUpon>ConsultationsFacade.cs</DependentUpon>
+    </Compile>
     <Compile Update="Sourcing/BoampSource.Contracts.cs">
       <DependentUpon>BoampSource.cs</DependentUpon>
     </Compile>

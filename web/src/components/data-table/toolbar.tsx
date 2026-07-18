@@ -8,6 +8,7 @@ import { DataTableViewOptions } from './view-options'
 type DataTableToolbarProps<TData> = {
   table: Table<TData>
   searchPlaceholder?: string
+  searchLabel?: string
   searchKey?: string
   filters?: {
     columnId: string
@@ -26,6 +27,7 @@ type DataTableToolbarProps<TData> = {
 export function DataTableToolbar<TData>({
   table,
   searchPlaceholder = 'Filtrer…',
+  searchLabel = 'Rechercher',
   searchKey,
   filters = [],
   children,
@@ -42,6 +44,7 @@ export function DataTableToolbar<TData>({
       <div className='flex w-full flex-1 flex-col-reverse items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center'>
         {searchKey ? (
           <Input
+            aria-label={searchLabel}
             placeholder={searchPlaceholder}
             value={
               (table.getColumn(searchKey)?.getFilterValue() as string) ?? ''
@@ -53,6 +56,7 @@ export function DataTableToolbar<TData>({
           />
         ) : (
           <Input
+            aria-label={searchLabel}
             placeholder={searchPlaceholder}
             value={table.getState().globalFilter ?? ''}
             onChange={(event) => table.setGlobalFilter(event.target.value)}

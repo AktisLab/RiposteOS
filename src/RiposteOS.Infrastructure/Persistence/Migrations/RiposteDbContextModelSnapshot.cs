@@ -221,6 +221,85 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                     b.ToTable("AspNetUserTokens", "identity");
                 });
 
+            modelBuilder.Entity("RiposteOS.Core.Consultations.Consultation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Buyer")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("NoticeUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid?>("OpportunityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ResponseDeadline")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OpportunityId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_consultations_opportunity_id")
+                        .HasFilter("\"OpportunityId\" IS NOT NULL");
+
+                    b.HasIndex("ResponseDeadline", "Id")
+                        .HasDatabaseName("ix_consultations_response_deadline_id");
+
+                    b.ToTable("consultations", "consultations");
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Consultations.ConsultationDocument", b =>
+                {
+                    b.Property<Guid>("ConsultationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StoredDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("ConsultationId", "StoredDocumentId");
+
+                    b.HasIndex("StoredDocumentId")
+                        .HasDatabaseName("ix_consultation_documents_stored_document_id");
+
+                    b.HasIndex("ConsultationId", "AddedAt", "StoredDocumentId")
+                        .HasDatabaseName("ix_consultation_documents_consultation_added_at_id");
+
+                    b.ToTable("consultation_documents", "consultations");
+                });
+
             modelBuilder.Entity("RiposteOS.Core.Documents.StoredDocument", b =>
                 {
                     b.Property<Guid>("Id")
@@ -788,6 +867,29 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Consultations.Consultation", b =>
+                {
+                    b.HasOne("RiposteOS.Core.Sourcing.Opportunity", null)
+                        .WithOne()
+                        .HasForeignKey("RiposteOS.Core.Consultations.Consultation", "OpportunityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Consultations.ConsultationDocument", b =>
+                {
+                    b.HasOne("RiposteOS.Core.Consultations.Consultation", null)
+                        .WithMany()
+                        .HasForeignKey("ConsultationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RiposteOS.Core.Documents.StoredDocument", null)
+                        .WithMany()
+                        .HasForeignKey("StoredDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 
