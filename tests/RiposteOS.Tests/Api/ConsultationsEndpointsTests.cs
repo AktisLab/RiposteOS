@@ -262,6 +262,127 @@ public sealed class ConsultationsEndpointsTests(RiposteWebApplicationFactory fac
     }
 
     [Fact]
+    public async Task DevelopmentEndpointReturnsStoredDocumentPassagesInOrdinalOrder()
+    {
+        await factory.ResetAsync();
+        var consultation = new Consultation("Logiciel métier", "Acheteur", null, null, Now);
+        var storedDocument = CreateStoredDocument();
+        var run = new DocumentProcessingRun(storedDocument.Id, Now);
+        await SeedAsync(consultation, storedDocument, run);
+        await SeedAsync(new ConsultationDocument(
+            consultation.Id,
+            storedDocument.Id,
+            ConsultationDocumentKind.FullDce,
+            Now));
+        run.TryStart(Now.AddMinutes(1));
+        run.Complete(2, 2, Now.AddMinutes(2));
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<RiposteDbContext>();
+            dbContext.Update(run);
+            dbContext.AddRange(
+                new DocumentPassage(run.Id, 2, "Second passage", 2, null, null),
+                new DocumentPassage(run.Id, 1, "Premier passage", 1, "Introduction", null));
+            await dbContext.SaveChangesAsync();
+        }
+
+        var passages = await factory.CreateClient().GetFromJsonAsync<DocumentAnalysisPassageResponse[]>(
+            $"/api/consultations/{consultation.Id}/documents/{storedDocument.Id}/analysis/passages");
+
+        Assert.Collection(
+            passages!,
+            passage =>
+            {
+                Assert.Equal(1, passage.Ordinal);
+                Assert.Equal("Premier passage", passage.Text);
+                Assert.Equal(1, passage.PageNumber);
+                Assert.Equal("Introduction", passage.SectionTitle);
+            },
+            passage => Assert.Equal(2, passage.Ordinal));
+    }
+
+    [Fact]
+    public async Task DocumentAnalysisCanBeQueuedAndIsIdempotent()
+    {
+        await factory.ResetAsync();
+        var consultation = new Consultation("Logiciel métier", "Acheteur", null, null, Now);
+        var storedDocument = CreateStoredDocument();
+        await SeedAsync(consultation, storedDocument);
+        await SeedAsync(new ConsultationDocument(
+            consultation.Id,
+            storedDocument.Id,
+            ConsultationDocumentKind.FullDce,
+            Now));
+        var client = factory.CreateClient();
+
+        using var queued = await client.PostAsync(
+            $"/api/consultations/{consultation.Id}/documents/{storedDocument.Id}/analysis",
+            null);
+        using var existing = await client.PostAsync(
+            $"/api/consultations/{consultation.Id}/documents/{storedDocument.Id}/analysis",
+            null);
+
+        Assert.Equal(HttpStatusCode.Accepted, queued.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, existing.StatusCode);
+        Assert.NotNull(factory.Jobs.CreatedJob);
+    }
+
+    [Fact]
+    public async Task DocumentAnalysisRejectsMissingAndUnsupportedDocuments()
+    {
+        await factory.ResetAsync();
+        var consultation = new Consultation("Logiciel métier", "Acheteur", null, null, Now);
+        var unsupported = new StoredDocument(
+            Guid.NewGuid(),
+            "archive.zip",
+            "application/zip",
+            12,
+            new string('a', 64),
+            Now);
+        await SeedAsync(consultation, unsupported);
+        await SeedAsync(new ConsultationDocument(
+            consultation.Id,
+            unsupported.Id,
+            ConsultationDocumentKind.Other,
+            Now));
+        var client = factory.CreateClient();
+
+        using var missing = await client.PostAsync(
+            $"/api/consultations/{consultation.Id}/documents/{Guid.NewGuid()}/analysis",
+            null);
+        using var unsupportedResponse = await client.PostAsync(
+            $"/api/consultations/{consultation.Id}/documents/{unsupported.Id}/analysis",
+            null);
+
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, unsupportedResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task DocumentAnalysisRecordsAWorkerQueueFailure()
+    {
+        await factory.ResetAsync();
+        var consultation = new Consultation("Logiciel métier", "Acheteur", null, null, Now);
+        var storedDocument = CreateStoredDocument();
+        await SeedAsync(consultation, storedDocument);
+        await SeedAsync(new ConsultationDocument(
+            consultation.Id,
+            storedDocument.Id,
+            ConsultationDocumentKind.FullDce,
+            Now));
+        factory.Jobs.ThrowOnCreate = true;
+
+        using var response = await factory.CreateClient().PostAsync(
+            $"/api/consultations/{consultation.Id}/documents/{storedDocument.Id}/analysis",
+            null);
+        var document = await response.Content.ReadFromJsonAsync<ConsultationDocumentResponse>();
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal("Failed", document!.Analysis.Status);
+        Assert.Equal("L'analyse n'a pas pu être transmise au worker.", document.Analysis.ErrorMessage);
+    }
+
+    [Fact]
     public async Task DocumentCategoryCanBeChangedAndDocumentCanBeDetached()
     {
         await factory.ResetAsync();

@@ -45,6 +45,34 @@ export type ConsultationDocument = {
   kind: ConsultationDocumentKind
   addedAt: string
   downloadUrl: string
+  analysis: DocumentAnalysis
+}
+
+export type DocumentAnalysisStatus =
+  | 'NotStarted'
+  | 'NotSupported'
+  | 'Queued'
+  | 'Running'
+  | 'Completed'
+  | 'Failed'
+
+export type DocumentAnalysis = {
+  status: DocumentAnalysisStatus
+  queuedAt: string | null
+  startedAt: string | null
+  completedAt: string | null
+  failedAt: string | null
+  pageCount: number
+  passageCount: number
+  errorMessage: string | null
+}
+
+export type DocumentAnalysisPassage = {
+  ordinal: number
+  text: string
+  pageNumber: number | null
+  sectionTitle: string | null
+  sourceLocation: string | null
 }
 
 export type DocumentUploadResponse = {
@@ -155,4 +183,37 @@ export const detachConsultationDocument = (
       method: 'DELETE',
       errorMessage: 'Impossible de détacher le document.',
     }
+  )
+
+export const requestDocumentAnalysis = (
+  consultationId: string,
+  documentId: string
+) =>
+  apiRequest<ConsultationDocument>(
+    `/api/consultations/${consultationId}/documents/${documentId}/analysis`,
+    {
+      method: 'POST',
+      errorMessage: 'Impossible de relancer l’analyse du document.',
+    }
+  )
+
+export const documentAnalysisPassagesQueryKey = (
+  consultationId: string,
+  documentId: string
+) =>
+  [
+    ...consultationsQueryRoot,
+    'documents',
+    consultationId,
+    documentId,
+    'passages',
+  ] as const
+
+export const getDocumentAnalysisPassages = (
+  consultationId: string,
+  documentId: string
+) =>
+  apiRequest<DocumentAnalysisPassage[]>(
+    `/api/consultations/${consultationId}/documents/${documentId}/analysis/passages`,
+    { errorMessage: 'Impossible de charger le détail de l’analyse.' }
   )

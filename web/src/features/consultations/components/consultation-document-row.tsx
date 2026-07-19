@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Download, Loader2, Trash2 } from 'lucide-react'
+import { Bug, Download, Loader2, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -12,6 +13,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -29,13 +31,16 @@ import {
   consultationQueryKey,
   consultationsQueryRoot,
   detachConsultationDocument,
+  requestDocumentAnalysis,
   updateConsultationDocumentKind,
 } from '../api'
 import {
   consultationDocumentKindLabels,
   formatDateTime,
   formatFileSize,
+  getDocumentAnalysisPresentation,
 } from '../presentation'
+import { DocumentAnalysisDrawer } from './document-analysis-drawer'
 
 type ConsultationDocumentRowProps = {
   consultationId: string
@@ -47,6 +52,7 @@ export function ConsultationDocumentRow({
   document,
 }: ConsultationDocumentRowProps) {
   const queryClient = useQueryClient()
+  const [debugOpen, setDebugOpen] = useState(false)
   const invalidate = (includeCount: boolean) => {
     void queryClient.invalidateQueries({
       queryKey: consultationDocumentsQueryKey(consultationId),
@@ -75,90 +81,160 @@ export function ConsultationDocumentRow({
     },
     onError: (error) => toast.error(error.message),
   })
-  const pending = categoryMutation.isPending || detachMutation.isPending
+  const analysisMutation = useMutation({
+    mutationFn: () => requestDocumentAnalysis(consultationId, document.id),
+    onSuccess: () => {
+      invalidate(false)
+      toast.success('Analyse du document mise en file')
+    },
+    onError: (error) => toast.error(error.message),
+  })
+  const pending =
+    categoryMutation.isPending ||
+    detachMutation.isPending ||
+    analysisMutation.isPending
+  const analysis = getDocumentAnalysisPresentation(document.analysis)
 
   return (
-    <TableRow>
-      <TableCell>
-        <p className='font-medium'>{document.originalFileName}</p>
-        <p className='text-xs text-muted-foreground'>{document.contentType}</p>
-      </TableCell>
-      <TableCell>
-        <Select
-          value={document.kind}
-          onValueChange={(value) =>
-            categoryMutation.mutate(value as ConsultationDocumentKind)
-          }
-          disabled={pending}
-        >
-          <SelectTrigger
-            size='sm'
-            className='min-w-52'
-            aria-label={`Catégorie de ${document.originalFileName}`}
+    <>
+      <TableRow>
+        <TableCell>
+          <p className='font-medium'>{document.originalFileName}</p>
+          <p className='text-xs text-muted-foreground'>
+            {document.contentType}
+          </p>
+        </TableCell>
+        <TableCell>
+          <Select
+            value={document.kind}
+            onValueChange={(value) =>
+              categoryMutation.mutate(value as ConsultationDocumentKind)
+            }
+            disabled={pending}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {consultationDocumentKinds.map((kind) => (
-              <SelectItem key={kind} value={kind}>
-                {consultationDocumentKindLabels[kind]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </TableCell>
-      <TableCell className='tabular-nums'>
-        {formatFileSize(document.size)}
-      </TableCell>
-      <TableCell>{formatDateTime(document.addedAt)}</TableCell>
-      <TableCell className='text-right'>
-        <div className='flex justify-end gap-1'>
-          <Button variant='ghost' size='sm' asChild>
-            <a href={document.downloadUrl} download>
-              <Download />
-              Télécharger
-            </a>
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
+            <SelectTrigger
+              size='sm'
+              className='min-w-52'
+              aria-label={`Catégorie de ${document.originalFileName}`}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {consultationDocumentKinds.map((kind) => (
+                <SelectItem key={kind} value={kind}>
+                  {consultationDocumentKindLabels[kind]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </TableCell>
+        <TableCell className='tabular-nums'>
+          {formatFileSize(document.size)}
+        </TableCell>
+        <TableCell>{formatDateTime(document.addedAt)}</TableCell>
+        <TableCell>
+          <div className='flex min-w-48 items-center gap-2'>
+            <Badge
+              variant={
+                document.analysis.status === 'Failed'
+                  ? 'destructive'
+                  : 'outline'
+              }
+              className={
+                document.analysis.status === 'Running' ? 'gap-1.5' : ''
+              }
+            >
+              {document.analysis.status === 'Running' && (
+                <Loader2 className='animate-spin' />
+              )}
+              {analysis.label}
+            </Badge>
+            {analysis.actionLabel && (
               <Button
                 variant='ghost'
-                size='icon'
+                size='sm'
                 disabled={pending}
-                aria-label={`Détacher ${document.originalFileName}`}
-                title='Détacher le document'
+                onClick={() => analysisMutation.mutate()}
               >
-                {detachMutation.isPending ? (
+                {analysisMutation.isPending ? (
                   <Loader2 className='animate-spin' />
                 ) : (
-                  <Trash2 />
+                  <RotateCcw />
                 )}
+                {analysis.actionLabel}
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Détacher ce document ?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {document.originalFileName} restera stocké, mais ne fera plus
-                  partie de cette consultation.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={detachMutation.isPending}>
-                  Annuler
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  className='bg-destructive text-white hover:bg-destructive/90'
-                  disabled={detachMutation.isPending}
-                  onClick={() => detachMutation.mutate()}
+            )}
+            {import.meta.env.DEV &&
+              document.analysis.status === 'Completed' && (
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  onClick={() => setDebugOpen(true)}
                 >
-                  Détacher
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      </TableCell>
-    </TableRow>
+                  <Bug />
+                  DEBUG
+                </Button>
+              )}
+          </div>
+        </TableCell>
+        <TableCell className='text-right'>
+          <div className='flex justify-end gap-1'>
+            <Button variant='ghost' size='sm' asChild>
+              <a href={document.downloadUrl} download>
+                <Download />
+                Télécharger
+              </a>
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  disabled={pending}
+                  aria-label={`Détacher ${document.originalFileName}`}
+                  title='Détacher le document'
+                >
+                  {detachMutation.isPending ? (
+                    <Loader2 className='animate-spin' />
+                  ) : (
+                    <Trash2 />
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Détacher ce document ?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {document.originalFileName} restera stocké, mais ne fera
+                    plus partie de cette consultation.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={detachMutation.isPending}>
+                    Annuler
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    className='bg-destructive text-white hover:bg-destructive/90'
+                    disabled={detachMutation.isPending}
+                    onClick={() => detachMutation.mutate()}
+                  >
+                    Détacher
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </TableCell>
+      </TableRow>
+      {import.meta.env.DEV && (
+        <DocumentAnalysisDrawer
+          consultationId={consultationId}
+          documentId={document.id}
+          documentName={document.originalFileName}
+          open={debugOpen}
+          onOpenChange={setDebugOpen}
+        />
+      )}
+    </>
   )
 }

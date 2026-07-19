@@ -33,7 +33,11 @@ import {
 } from './api'
 import { AddDocumentDialog } from './components/add-document-dialog'
 import { ConsultationDocumentRow } from './components/consultation-document-row'
-import { formatConsultationDeadline, formatDateTime } from './presentation'
+import {
+  formatConsultationDeadline,
+  formatDateTime,
+  hasActiveDocumentAnalysis,
+} from './presentation'
 
 const route = getRouteApi('/_authenticated/consultations/$consultationId')
 
@@ -47,6 +51,10 @@ export function ConsultationDetail() {
   const documentsQuery = useQuery({
     queryKey: consultationDocumentsQueryKey(consultationId),
     queryFn: () => getConsultationDocuments(consultationId),
+    refetchInterval: (query) =>
+      query.state.data && hasActiveDocumentAnalysis(query.state.data)
+        ? 2_000
+        : false,
   })
 
   return (
@@ -185,6 +193,7 @@ export function ConsultationDetail() {
                         <TableHead>Type métier</TableHead>
                         <TableHead>Taille</TableHead>
                         <TableHead>Ajouté le</TableHead>
+                        <TableHead>Analyse</TableHead>
                         <TableHead className='text-right'>Actions</TableHead>
                       </TableRow>
                     </TableHeader>

@@ -53,4 +53,34 @@ public sealed record ConsultationDocumentResult(
     long Size,
     DateTimeOffset CreatedAt,
     ConsultationDocumentKind Kind,
-    DateTimeOffset AddedAt);
+    DateTimeOffset AddedAt,
+    DocumentAnalysisResult Analysis);
+
+public sealed record DocumentAnalysisResult(
+    string Status,
+    DateTimeOffset? QueuedAt,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? CompletedAt,
+    DateTimeOffset? FailedAt,
+    int PageCount,
+    int PassageCount,
+    string? ErrorMessage);
+
+public sealed record DocumentPassageResult(
+    int Ordinal,
+    string Text,
+    int? PageNumber,
+    string? SectionTitle,
+    string? SourceLocation);
+
+public enum ConsultationDocumentProcessingStatus
+{
+    DocumentNotFound,
+    NotSupported,
+    Queued,
+    Existing,
+}
+
+public sealed record ConsultationDocumentProcessingResult(
+    ConsultationDocumentProcessingStatus Status,
+    ConsultationDocumentResult? Document);

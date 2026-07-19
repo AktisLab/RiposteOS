@@ -1,3 +1,4 @@
+using Hangfire;
 using Gridify;
 using Gridify.EntityFramework;
 using Microsoft.EntityFrameworkCore;
@@ -6,12 +7,15 @@ using RiposteOS.Core.Consultations;
 using RiposteOS.Core.Documents;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Infrastructure.Persistence;
+using RiposteOS.Infrastructure.Documents;
 
 namespace RiposteOS.Infrastructure.Consultations;
 
 public sealed class ConsultationsFacade(
     RiposteDbContext dbContext,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    DocumentProcessingStore processingStore,
+    IBackgroundJobClient jobClient)
 {
     private static readonly ConsultationGridifyMapper ConsultationMapper = new();
 
@@ -113,6 +117,9 @@ public sealed class ConsultationsFacade(
             from link in dbContext.Set<ConsultationDocument>().AsNoTracking()
             join document in dbContext.Set<StoredDocument>().AsNoTracking()
                 on link.StoredDocumentId equals document.Id
+            join run in dbContext.Set<DocumentProcessingRun>().AsNoTracking()
+                on document.Id equals run.StoredDocumentId into runs
+            from run in runs.DefaultIfEmpty()
             where link.ConsultationId == consultationId
             orderby link.AddedAt descending, document.Id
             select new
@@ -124,6 +131,7 @@ public sealed class ConsultationsFacade(
                 document.CreatedAt,
                 link.Kind,
                 link.AddedAt,
+                Run = run,
             }).ToArrayAsync(cancellationToken);
 
         return documents.Select(document => new ConsultationDocumentResult(
@@ -133,7 +141,44 @@ public sealed class ConsultationsFacade(
             document.Size,
             document.CreatedAt,
             document.Kind,
-            document.AddedAt)).ToArray();
+            document.AddedAt,
+            ToAnalysis(document.ContentType, document.Run))).ToArray();
+    }
+
+    public async Task<DocumentPassageResult[]?> ListDocumentPassagesAsync(
+        Guid consultationId,
+        Guid storedDocumentId,
+        CancellationToken cancellationToken)
+    {
+        var run = await (
+            from link in dbContext.Set<ConsultationDocument>().AsNoTracking()
+            join processingRun in dbContext.Set<DocumentProcessingRun>().AsNoTracking()
+                on link.StoredDocumentId equals processingRun.StoredDocumentId into runs
+            from processingRun in runs.DefaultIfEmpty()
+            where link.ConsultationId == consultationId
+                && link.StoredDocumentId == storedDocumentId
+            select processingRun).SingleOrDefaultAsync(cancellationToken);
+
+        if (run is null)
+        {
+            var documentExists = await dbContext.Set<ConsultationDocument>().AsNoTracking()
+                .AnyAsync(
+                    link => link.ConsultationId == consultationId
+                        && link.StoredDocumentId == storedDocumentId,
+                    cancellationToken);
+            return documentExists ? [] : null;
+        }
+
+        return await dbContext.Set<DocumentPassage>().AsNoTracking()
+            .Where(passage => passage.DocumentProcessingRunId == run.Id)
+            .OrderBy(passage => passage.Ordinal)
+            .Select(passage => new DocumentPassageResult(
+                passage.Ordinal,
+                passage.Text,
+                passage.PageNumber,
+                passage.SectionTitle,
+                passage.SourceLocation))
+            .ToArrayAsync(cancellationToken);
     }
 
     public async Task<ConsultationDocumentAttachmentResult> AttachDocumentAsync(
@@ -151,46 +196,102 @@ public sealed class ConsultationsFacade(
                 null);
         }
 
-        if (!await dbContext.Set<StoredDocument>()
-            .AsNoTracking()
-            .AnyAsync(document => document.Id == storedDocumentId, cancellationToken))
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        var document = await GetStoredDocumentForUpdateAsync(storedDocumentId, cancellationToken);
+        if (document is null)
         {
             return new ConsultationDocumentAttachmentResult(
                 ConsultationDocumentAttachmentStatus.StoredDocumentNotFound,
                 null);
         }
 
-        var existing = await GetDocumentAsync(consultationId, storedDocumentId, cancellationToken);
-        if (existing is not null)
+        var link = await dbContext.Set<ConsultationDocument>().SingleOrDefaultAsync(item =>
+            item.ConsultationId == consultationId && item.StoredDocumentId == storedDocumentId,
+            cancellationToken);
+        var created = link is null;
+        if (created)
         {
-            return new ConsultationDocumentAttachmentResult(
-                ConsultationDocumentAttachmentStatus.Existing,
-                existing);
-        }
-
-        dbContext.Set<ConsultationDocument>().Add(new ConsultationDocument(
-            consultationId,
-            storedDocumentId,
-            kind,
-            timeProvider.GetUtcNow()));
-        try
-        {
+            dbContext.Set<ConsultationDocument>().Add(new ConsultationDocument(
+                consultationId,
+                storedDocumentId,
+                kind,
+                timeProvider.GetUtcNow()));
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException exception) when (
-            exception.InnerException is PostgresException
-            {
-                SqlState: PostgresErrorCodes.UniqueViolation,
-            })
+
+        DocumentProcessingQueueResult? processing = null;
+        if (DocumentProcessingStore.IsSupported(document.ContentType))
         {
-            dbContext.ChangeTracker.Clear();
-            return new ConsultationDocumentAttachmentResult(
-                ConsultationDocumentAttachmentStatus.Existing,
-                await GetDocumentAsync(consultationId, storedDocumentId, cancellationToken));
+            processing = await processingStore.QueueAsync(document.Id, cancellationToken);
+            if (processing.Enqueue)
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        if (processing is { Enqueue: true })
+        {
+            await EnqueueAsync(processing.Run.Id);
         }
 
         return new ConsultationDocumentAttachmentResult(
-            ConsultationDocumentAttachmentStatus.Created,
+            created ? ConsultationDocumentAttachmentStatus.Created : ConsultationDocumentAttachmentStatus.Existing,
+            await GetDocumentAsync(consultationId, storedDocumentId, cancellationToken));
+    }
+
+    public async Task<ConsultationDocumentProcessingResult> QueueDocumentProcessingAsync(
+        Guid consultationId,
+        Guid storedDocumentId,
+        CancellationToken cancellationToken)
+    {
+        if (!await dbContext.Set<ConsultationDocument>().AsNoTracking().AnyAsync(item =>
+                item.ConsultationId == consultationId && item.StoredDocumentId == storedDocumentId,
+                cancellationToken))
+        {
+            return new ConsultationDocumentProcessingResult(ConsultationDocumentProcessingStatus.DocumentNotFound, null);
+        }
+
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        var document = await GetStoredDocumentForUpdateAsync(storedDocumentId, cancellationToken);
+        if (document is null)
+        {
+            return new ConsultationDocumentProcessingResult(ConsultationDocumentProcessingStatus.DocumentNotFound, null);
+        }
+
+        if (!DocumentProcessingStore.IsSupported(document.ContentType))
+        {
+            return new ConsultationDocumentProcessingResult(
+                ConsultationDocumentProcessingStatus.NotSupported,
+                await GetDocumentAsync(consultationId, storedDocumentId, cancellationToken));
+        }
+
+        var processing = await processingStore.QueueAsync(document.Id, cancellationToken);
+        if (processing.Enqueue)
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        if (processing.Enqueue)
+        {
+            await EnqueueAsync(processing.Run.Id);
+        }
+
+        return new ConsultationDocumentProcessingResult(
+            processing.Enqueue ? ConsultationDocumentProcessingStatus.Queued : ConsultationDocumentProcessingStatus.Existing,
             await GetDocumentAsync(consultationId, storedDocumentId, cancellationToken));
     }
 
@@ -243,6 +344,27 @@ public sealed class ConsultationsFacade(
             : dbContext.Set<Opportunity>()
                 .SingleOrDefaultAsync(opportunity => opportunity.Id == opportunityId, cancellationToken);
 
+    private Task<StoredDocument?> GetStoredDocumentForUpdateAsync(
+        Guid storedDocumentId,
+        CancellationToken cancellationToken) =>
+        dbContext.Database.IsNpgsql()
+            ? dbContext.Set<StoredDocument>()
+                .FromSqlInterpolated($"SELECT * FROM documents.stored_documents WHERE \"Id\" = {storedDocumentId} FOR UPDATE")
+                .SingleOrDefaultAsync(cancellationToken)
+            : dbContext.Set<StoredDocument>().SingleOrDefaultAsync(document => document.Id == storedDocumentId, cancellationToken);
+
+    private async Task EnqueueAsync(Guid runId)
+    {
+        try
+        {
+            jobClient.Enqueue<DocumentProcessingJob>(job => job.ExecuteAsync(runId, CancellationToken.None));
+        }
+        catch
+        {
+            await processingStore.FailAsync(runId, "L'analyse n'a pas pu être transmise au worker.", CancellationToken.None);
+        }
+    }
+
     private IQueryable<ConsultationResult> Query() =>
         from consultation in dbContext.Set<Consultation>().AsNoTracking()
         join opportunity in dbContext.Set<Opportunity>().AsNoTracking()
@@ -273,6 +395,9 @@ public sealed class ConsultationsFacade(
             from link in dbContext.Set<ConsultationDocument>().AsNoTracking()
             join storedDocument in dbContext.Set<StoredDocument>().AsNoTracking()
                 on link.StoredDocumentId equals storedDocument.Id
+            join run in dbContext.Set<DocumentProcessingRun>().AsNoTracking()
+                on storedDocument.Id equals run.StoredDocumentId into runs
+            from run in runs.DefaultIfEmpty()
             where link.ConsultationId == consultationId
                 && link.StoredDocumentId == storedDocumentId
             select new
@@ -284,6 +409,7 @@ public sealed class ConsultationsFacade(
                 storedDocument.CreatedAt,
                 link.Kind,
                 link.AddedAt,
+                Run = run,
             }).SingleOrDefaultAsync(cancellationToken);
 
         return document is null
@@ -295,8 +421,24 @@ public sealed class ConsultationsFacade(
                 document.Size,
                 document.CreatedAt,
                 document.Kind,
-                document.AddedAt);
+                document.AddedAt,
+                ToAnalysis(document.ContentType, document.Run));
     }
+
+    private static DocumentAnalysisResult ToAnalysis(string contentType, DocumentProcessingRun? run) =>
+        run is null
+            ? new DocumentAnalysisResult(
+                DocumentProcessingStore.IsSupported(contentType) ? "NotStarted" : "NotSupported",
+                null, null, null, null, 0, 0, null)
+            : new DocumentAnalysisResult(
+                run.Status.ToString(),
+                run.QueuedAt,
+                run.StartedAt,
+                run.CompletedAt,
+                run.FailedAt,
+                run.PageCount,
+                run.PassageCount,
+                run.ErrorMessage);
 
     private static ConsultationResult ToResult(
         Consultation consultation,

@@ -8,4 +8,5 @@ public sealed record ConsultationDocumentResponse(
     DateTimeOffset CreatedAt,
     string Kind,
     DateTimeOffset AddedAt,
-    string DownloadUrl);
+    string DownloadUrl,
+    DocumentAnalysisResponse Analysis);

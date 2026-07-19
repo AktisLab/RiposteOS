@@ -8,6 +8,7 @@ using RiposteOS.Core.Consultations;
 using RiposteOS.Core.Documents;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Infrastructure.Consultations;
+using RiposteOS.Infrastructure.Documents;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Tests.TestSupport;
 
@@ -116,7 +117,7 @@ public sealed class PostgreSqlConsultationsTests(PostgreSqlFixture fixture)
         var storedDocument = CreateStoredDocument();
         dbContext.AddRange(consultation, storedDocument);
         await dbContext.SaveChangesAsync();
-        var facade = new ConsultationsFacade(dbContext, new FixedTimeProvider(Now));
+        var facade = CreateFacade(dbContext);
 
         var first = await facade.AttachDocumentAsync(
             consultation.Id,
@@ -169,7 +170,7 @@ public sealed class PostgreSqlConsultationsTests(PostgreSqlFixture fixture)
         var manual = new Consultation("Portail citoyen", "Ville de Lyon", null, null, Now);
         dbContext.AddRange(sourced, manual);
         await dbContext.SaveChangesAsync();
-        var facade = new ConsultationsFacade(dbContext, new FixedTimeProvider(Now));
+        var facade = CreateFacade(dbContext);
 
         var page = await facade.ListAsync(1, 1, null, "title", CancellationToken.None);
         var filtered = await facade.ListAsync(1, 20, "source=BOAMP", "title", CancellationToken.None);
@@ -197,8 +198,8 @@ public sealed class PostgreSqlConsultationsTests(PostgreSqlFixture fixture)
 
         await using var firstContext = PostgreSqlFixture.CreateContext(connectionString);
         await using var secondContext = PostgreSqlFixture.CreateContext(connectionString);
-        var firstFacade = new ConsultationsFacade(firstContext, new FixedTimeProvider(Now));
-        var secondFacade = new ConsultationsFacade(secondContext, new FixedTimeProvider(Now));
+        var firstFacade = CreateFacade(firstContext);
+        var secondFacade = CreateFacade(secondContext);
 
         var results = await Task.WhenAll(
             firstFacade.PromoteOpportunityAsync(opportunityId, CancellationToken.None),
@@ -278,6 +279,16 @@ public sealed class PostgreSqlConsultationsTests(PostgreSqlFixture fixture)
         Assert.Equal(
             OpportunityStatus.Retained,
             (await verificationContext.Set<Opportunity>().SingleAsync()).Status);
+    }
+
+    private static ConsultationsFacade CreateFacade(RiposteDbContext dbContext)
+    {
+        var timeProvider = new FixedTimeProvider(Now);
+        return new ConsultationsFacade(
+            dbContext,
+            timeProvider,
+            new DocumentProcessingStore(dbContext, timeProvider),
+            new RecordingBackgroundJobClient());
     }
 
     private static Opportunity CreateOpportunity(string sourceId) => new(

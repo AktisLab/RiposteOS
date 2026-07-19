@@ -23,9 +23,27 @@ public static partial class ConsultationsMapper
             document.CreatedAt,
             document.Kind.ToString(),
             document.AddedAt,
-            $"/api/documents/{document.Id}/content");
+            $"/api/documents/{document.Id}/content",
+            new DocumentAnalysisResponse(
+                document.Analysis.Status,
+                document.Analysis.QueuedAt,
+                document.Analysis.StartedAt,
+                document.Analysis.CompletedAt,
+                document.Analysis.FailedAt,
+                document.Analysis.PageCount,
+                document.Analysis.PassageCount,
+                document.Analysis.ErrorMessage));
 
     public static ConsultationDocumentResponse[] ToDocumentResponses(
         IEnumerable<ConsultationDocumentResult> documents) =>
         documents.Select(ToDocumentResponse).ToArray();
+
+    public static DocumentAnalysisPassageResponse[] ToDocumentAnalysisPassageResponses(
+        IEnumerable<DocumentPassageResult> passages) =>
+        passages.Select(passage => new DocumentAnalysisPassageResponse(
+            passage.Ordinal,
+            passage.Text,
+            passage.PageNumber,
+            passage.SectionTitle,
+            passage.SourceLocation)).ToArray();
 }

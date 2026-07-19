@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using RiposteOS.Infrastructure.Consultations;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Core.Documents;
@@ -67,6 +68,28 @@ public static class DependencyInjection
         });
         services.AddScoped<IObjectStorage, S3ObjectStorage>();
         services.AddScoped<DocumentsFacade>();
+        services.AddOptions<DoclingOptions>()
+            .Bind(configuration.GetSection(DoclingOptions.SectionName))
+            .Validate(options => Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out _), "Docling:BaseUrl must be an absolute URL.")
+            .ValidateOnStart();
+        services.AddHttpClient<DoclingDocumentParser>((serviceProvider, client) =>
+        {
+            var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<DoclingOptions>>().Value;
+            client.BaseAddress = new Uri(options.BaseUrl);
+            client.Timeout = TimeSpan.FromMinutes(5);
+            // A document upload reads directly from object storage. Once the multipart body has
+            // been sent, its stream cannot be replayed by an HTTP retry.
+        }).AddStandardResilienceHandler(options =>
+        {
+            options.Retry.DisableForUnsafeHttpMethods();
+            options.AttemptTimeout.Timeout = TimeSpan.FromMinutes(5);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(6);
+            options.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(10);
+        });
+        services.AddScoped<IDocumentParser>(serviceProvider =>
+            serviceProvider.GetRequiredService<DoclingDocumentParser>());
+        services.AddScoped<DocumentProcessingStore>();
+        services.AddScoped<DocumentProcessingJob>();
         services.AddScoped<ConsultationsFacade>();
         services.AddOptions<BoampOptions>()
             .Bind(configuration.GetSection(BoampOptions.SectionName))

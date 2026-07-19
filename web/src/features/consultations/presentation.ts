@@ -1,4 +1,5 @@
 import type {
+  DocumentAnalysis,
   ConsultationDocumentKind,
   CreateConsultationRequest,
 } from './api.ts'
@@ -45,6 +46,47 @@ export function formatFileSize(size: number) {
   if (size < 1024) return `${size} o`
   if (size < 1024 * 1024) return `${sizeFormatter.format(size / 1024)} Ko`
   return `${sizeFormatter.format(size / (1024 * 1024))} Mo`
+}
+
+export function getDocumentAnalysisPresentation(analysis: DocumentAnalysis) {
+  switch (analysis.status) {
+    case 'Queued':
+      return { label: 'Analyse en attente', isActive: true }
+    case 'Running':
+      return { label: 'Analyse en cours…', isActive: true }
+    case 'Completed':
+      return {
+        label: `Analysé · ${analysis.pageCount} pages · ${analysis.passageCount} passages`,
+        isActive: false,
+      }
+    case 'Failed':
+      return {
+        label: analysis.errorMessage || 'L’analyse a échoué.',
+        actionLabel: 'Réessayer',
+        isActive: false,
+      }
+    case 'NotStarted':
+      return {
+        label: 'Analyse non lancée',
+        actionLabel: 'Analyser',
+        isActive: false,
+      }
+    case 'NotSupported':
+      return {
+        label: 'Analyse non disponible pour ce format',
+        isActive: false,
+      }
+  }
+}
+
+export function hasActiveDocumentAnalysis(
+  documents: {
+    analysis: DocumentAnalysis
+  }[]
+) {
+  return documents.some(
+    (document) => getDocumentAnalysisPresentation(document.analysis).isActive
+  )
 }
 
 export function normalizeConsultationForm(values: {

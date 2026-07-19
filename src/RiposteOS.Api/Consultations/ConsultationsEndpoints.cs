@@ -2,6 +2,7 @@ using RiposteOS.Api.Consultations.Dtos;
 using RiposteOS.Api.Consultations.Mappers;
 using RiposteOS.Core.Consultations;
 using RiposteOS.Infrastructure.Consultations;
+using Microsoft.Extensions.Hosting;
 
 namespace RiposteOS.Api.Consultations;
 
@@ -146,6 +147,54 @@ public static class ConsultationsEndpoints
             return result.Status == ConsultationDocumentAttachmentStatus.Created
                 ? TypedResults.Created($"/api/consultations/{consultationId}/documents", response)
                 : TypedResults.Ok(response);
+        });
+
+        group.MapPost("/consultations/{consultationId:guid}/documents/{documentId:guid}/analysis", async Task<IResult> (
+            Guid consultationId,
+            Guid documentId,
+            ConsultationsFacade consultations,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await consultations.QueueDocumentProcessingAsync(
+                consultationId,
+                documentId,
+                cancellationToken);
+            if (result.Status == ConsultationDocumentProcessingStatus.DocumentNotFound)
+            {
+                return TypedResults.NotFound();
+            }
+
+            if (result.Status == ConsultationDocumentProcessingStatus.NotSupported)
+            {
+                return TypedResults.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+            }
+
+            var response = ConsultationsMapper.ToDocumentResponse(
+                result.Document ?? throw new InvalidOperationException("The document was not returned."));
+            return result.Status == ConsultationDocumentProcessingStatus.Queued
+                ? TypedResults.Accepted($"/api/consultations/{consultationId}/documents/{documentId}", response)
+                : TypedResults.Ok(response);
+        });
+
+        group.MapGet("/consultations/{consultationId:guid}/documents/{documentId:guid}/analysis/passages", async Task<IResult> (
+            Guid consultationId,
+            Guid documentId,
+            IHostEnvironment environment,
+            ConsultationsFacade consultations,
+            CancellationToken cancellationToken) =>
+        {
+            if (!environment.IsDevelopment())
+            {
+                return TypedResults.NotFound();
+            }
+
+            var passages = await consultations.ListDocumentPassagesAsync(
+                consultationId,
+                documentId,
+                cancellationToken);
+            return passages is null
+                ? TypedResults.NotFound()
+                : TypedResults.Ok(ConsultationsMapper.ToDocumentAnalysisPassageResponses(passages));
         });
 
         group.MapPut("/consultations/{consultationId:guid}/documents/{documentId:guid}", async Task<IResult> (
