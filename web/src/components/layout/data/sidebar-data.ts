@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { type SidebarData } from '../types'
 
-export const sidebarData: SidebarData = {
+export const getSidebarData = (hasAiProviderWarning: boolean): SidebarData => ({
   navGroups: [
     {
       title: 'RiposteOS',
@@ -26,12 +26,22 @@ export const sidebarData: SidebarData = {
         {
           title: 'Paramètres',
           icon: Settings,
+          badge: hasAiProviderWarning ? '!' : undefined,
+          badgeVariant: hasAiProviderWarning ? 'destructive' : undefined,
           items: [
             { title: "Vue d'ensemble", url: '/settings' },
             { title: 'Sourcing', url: '/settings/sourcing' },
+            {
+              title: 'IA',
+              url: '/settings/ai',
+              badge: hasAiProviderWarning ? 'Indisponible' : undefined,
+              badgeVariant: hasAiProviderWarning ? 'destructive' : undefined,
+            },
           ],
         },
       ],
     },
   ],
-}
+})
+
+export const sidebarData = getSidebarData(false)

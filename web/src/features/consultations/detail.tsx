@@ -10,7 +10,6 @@ import {
   Plus,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -35,8 +34,7 @@ import { AddDocumentDialog } from './components/add-document-dialog'
 import { ConsultationDocumentRow } from './components/consultation-document-row'
 import {
   formatConsultationDeadline,
-  formatDateTime,
-  hasActiveDocumentAnalysis,
+  hasActiveDocumentProcessing,
 } from './presentation'
 
 const route = getRouteApi('/_authenticated/consultations/$consultationId')
@@ -52,7 +50,7 @@ export function ConsultationDetail() {
     queryKey: consultationDocumentsQueryKey(consultationId),
     queryFn: () => getConsultationDocuments(consultationId),
     refetchInterval: (query) =>
-      query.state.data && hasActiveDocumentAnalysis(query.state.data)
+      query.state.data && hasActiveDocumentProcessing(query.state.data)
         ? 2_000
         : false,
   })
@@ -64,14 +62,7 @@ export function ConsultationDetail() {
         <ThemeSwitch />
         <ConfigDrawer />
       </Header>
-      <Main className='flex flex-1 flex-col gap-6'>
-        <Button variant='ghost' className='w-fit' asChild>
-          <Link to='/consultations'>
-            <ArrowLeft />
-            Retour aux consultations
-          </Link>
-        </Button>
-
+      <Main className='flex flex-1 flex-col gap-8'>
         {consultationQuery.isPending ? (
           <StateMessage
             icon={<Loader2 className='animate-spin' />}
@@ -86,17 +77,30 @@ export function ConsultationDetail() {
         ) : (
           <>
             <section className='border-b pb-6'>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='-ml-2 text-muted-foreground'
+                asChild
+              >
+                <Link to='/consultations'>
+                  <ArrowLeft />
+                  Consultations
+                </Link>
+              </Button>
               <div className='flex flex-wrap items-start justify-between gap-4'>
-                <div className='max-w-4xl'>
+                <div className='mt-4 max-w-4xl'>
                   <h1 className='text-3xl leading-tight font-bold tracking-tight'>
                     {consultationQuery.data.title}
                   </h1>
-                  <p className='mt-2 text-base text-muted-foreground'>
-                    {consultationQuery.data.buyer}
-                  </p>
+                  {consultationQuery.data.buyer && (
+                    <p className='mt-2 text-base text-muted-foreground'>
+                      {consultationQuery.data.buyer}
+                    </p>
+                  )}
                 </div>
                 {consultationQuery.data.noticeUrl && (
-                  <Button variant='outline' asChild>
+                  <Button variant='outline' className='mt-4' asChild>
                     <a
                       href={consultationQuery.data.noticeUrl}
                       target='_blank'
@@ -109,25 +113,7 @@ export function ConsultationDetail() {
                 )}
               </div>
 
-              <dl className='mt-6 grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-4'>
-                <div>
-                  <dt className='text-muted-foreground'>Source</dt>
-                  <dd className='mt-1 font-medium'>
-                    {consultationQuery.data.source ? (
-                      <span className='inline-flex items-center gap-2'>
-                        <SourcingSourceLogo
-                          source={consultationQuery.data.source}
-                          className='size-4'
-                        />
-                        {consultationQuery.data.source.toUpperCase()}
-                        {consultationQuery.data.sourceId &&
-                          ` · ${consultationQuery.data.sourceId}`}
-                      </span>
-                    ) : (
-                      'Création manuelle'
-                    )}
-                  </dd>
-                </div>
+              <dl className='mt-6 flex flex-wrap gap-x-10 gap-y-4 text-sm'>
                 <div>
                   <dt className='text-muted-foreground'>Échéance</dt>
                   <dd className='mt-1 font-medium'>
@@ -136,35 +122,41 @@ export function ConsultationDetail() {
                     )}
                   </dd>
                 </div>
-                <div>
-                  <dt className='text-muted-foreground'>Créée le</dt>
-                  <dd className='mt-1 font-medium'>
-                    {formatDateTime(consultationQuery.data.createdAt)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className='text-muted-foreground'>Documents</dt>
-                  <dd className='mt-1 font-medium tabular-nums'>
-                    {consultationQuery.data.documentCount}
-                  </dd>
-                </div>
+                {consultationQuery.data.source && (
+                  <div>
+                    <dt className='text-muted-foreground'>Source</dt>
+                    <dd className='mt-1 font-medium'>
+                      <span className='inline-flex items-center gap-2'>
+                        <SourcingSourceLogo
+                          source={consultationQuery.data.source}
+                          className='size-4'
+                        />
+                        {consultationQuery.data.source.toUpperCase()}
+                      </span>
+                    </dd>
+                  </div>
+                )}
               </dl>
             </section>
 
-            <Card className='overflow-hidden py-0'>
-              <CardHeader className='flex flex-row items-center justify-between gap-4 border-b py-4'>
-                <div>
-                  <CardTitle>Documents</CardTitle>
-                  <p className='mt-1 text-sm text-muted-foreground'>
-                    Pièces rattachées à cette consultation.
-                  </p>
-                </div>
+            <section aria-labelledby='documents-heading'>
+              <div className='flex flex-wrap items-center justify-between gap-4'>
+                <h2
+                  id='documents-heading'
+                  className='text-lg font-semibold tracking-tight'
+                >
+                  Documents
+                  <span className='ml-2 text-sm font-normal text-muted-foreground tabular-nums'>
+                    {documentsQuery.data?.length ??
+                      consultationQuery.data.documentCount}
+                  </span>
+                </h2>
                 <Button onClick={() => setDialogOpen(true)}>
                   <Plus />
                   Ajouter un document
                 </Button>
-              </CardHeader>
-              <CardContent className='p-0'>
+              </div>
+              <div className='mt-4 border-y'>
                 {documentsQuery.isPending ? (
                   <StateMessage
                     icon={<Loader2 className='animate-spin' />}
@@ -186,13 +178,11 @@ export function ConsultationDetail() {
                     Aucun document rattaché. Ajoutez le DCE pour commencer.
                   </StateMessage>
                 ) : (
-                  <Table>
+                  <Table className='min-w-180'>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Nom</TableHead>
-                        <TableHead>Type métier</TableHead>
-                        <TableHead>Taille</TableHead>
-                        <TableHead>Ajouté le</TableHead>
+                        <TableHead>Document</TableHead>
+                        <TableHead>Catégorie</TableHead>
                         <TableHead>Analyse</TableHead>
                         <TableHead className='text-right'>Actions</TableHead>
                       </TableRow>
@@ -208,8 +198,8 @@ export function ConsultationDetail() {
                     </TableBody>
                   </Table>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           </>
         )}
       </Main>

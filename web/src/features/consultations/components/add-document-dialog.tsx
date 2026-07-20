@@ -1,5 +1,5 @@
-import { type FormEvent, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { type FormEvent, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -14,22 +14,12 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  type ConsultationDocumentKind,
   attachDocument,
-  consultationDocumentKinds,
   consultationDocumentsQueryKey,
   consultationQueryKey,
   consultationsQueryRoot,
   uploadDocument,
 } from '../api'
-import { consultationDocumentKindLabels } from '../presentation'
 
 type AddDocumentDialogProps = {
   consultationId: string
@@ -43,51 +33,68 @@ export function AddDocumentDialog({
   onOpenChange,
 }: AddDocumentDialogProps) {
   const queryClient = useQueryClient()
-  const [file, setFile] = useState<File | null>(null)
-  const [kind, setKind] = useState<ConsultationDocumentKind>('FullDce')
-  const [uploadedDocumentId, setUploadedDocumentId] = useState<string | null>(
-    null
-  )
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const mutation = useMutation({
-    mutationFn: async () => {
-      if (!file) throw new Error('Sélectionnez un fichier.')
-      let documentId = uploadedDocumentId
-      if (!documentId) {
-        documentId = (await uploadDocument(file)).id
-        setUploadedDocumentId(documentId)
-      }
-      return attachDocument(consultationId, documentId, kind)
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: consultationDocumentsQueryKey(consultationId),
-      })
-      void queryClient.invalidateQueries({
-        queryKey: consultationQueryKey(consultationId),
-      })
-      void queryClient.invalidateQueries({ queryKey: consultationsQueryRoot })
-      toast.success('Document ajouté à la consultation')
-      setFile(null)
-      setKind('FullDce')
-      setUploadedDocumentId(null)
-      setErrorMessage(null)
-      onOpenChange(false)
-    },
-    onError: (error) => setErrorMessage(error.message),
-  })
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [files, setFiles] = useState<File[]>([])
+  const [completedCount, setCompletedCount] = useState(0)
+  const [errors, setErrors] = useState<string[]>([])
+  const [isImporting, setIsImporting] = useState(false)
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  function close() {
+    if (inputRef.current) inputRef.current.value = ''
+    setFiles([])
+    setCompletedCount(0)
+    setErrors([])
+    onOpenChange(false)
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setErrorMessage(null)
-    mutation.mutate()
+    if (files.length === 0) return
+
+    setIsImporting(true)
+    setCompletedCount(0)
+    setErrors([])
+    const importErrors: string[] = []
+
+    for (const [index, file] of files.entries()) {
+      try {
+        const uploadedDocument = await uploadDocument(file)
+        await attachDocument(consultationId, uploadedDocument.id)
+      } catch (error) {
+        importErrors.push(
+          `${file.name} : ${error instanceof Error ? error.message : 'échec de l’ajout.'}`
+        )
+      }
+      setCompletedCount(index + 1)
+    }
+
+    setErrors(importErrors)
+    setIsImporting(false)
+    void queryClient.invalidateQueries({
+      queryKey: consultationDocumentsQueryKey(consultationId),
+    })
+    void queryClient.invalidateQueries({
+      queryKey: consultationQueryKey(consultationId),
+    })
+    void queryClient.invalidateQueries({ queryKey: consultationsQueryRoot })
+    if (importErrors.length === 0) {
+      toast.success(
+        files.length === 1
+          ? 'Document ajouté à la consultation'
+          : `${files.length} documents ajoutés à la consultation`
+      )
+      close()
+    }
   }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
-        if (!mutation.isPending) onOpenChange(nextOpen)
+        if (!isImporting) {
+          if (nextOpen) onOpenChange(true)
+          else close()
+        }
       }}
     >
       <DialogContent>
@@ -95,7 +102,8 @@ export function AddDocumentDialog({
           <DialogHeader>
             <DialogTitle>Ajouter un document</DialogTitle>
             <DialogDescription>
-              Téléversez une pièce puis indiquez son rôle dans la consultation.
+              Ajoutez les pièces du DCE. Leur catégorie sera déterminée après
+              analyse.
             </DialogDescription>
           </DialogHeader>
 
@@ -103,59 +111,44 @@ export function AddDocumentDialog({
             <div className='space-y-2'>
               <Label htmlFor='consultation-document'>Fichier</Label>
               <Input
+                ref={inputRef}
                 id='consultation-document'
                 type='file'
                 accept='.pdf,.doc,.docx,.xls,.xlsx,.zip'
-                required={!uploadedDocumentId}
-                disabled={Boolean(uploadedDocumentId) || mutation.isPending}
+                multiple
+                required={files.length === 0}
+                disabled={isImporting}
                 onChange={(event) => {
-                  setFile(event.target.files?.[0] ?? null)
-                  setUploadedDocumentId(null)
-                  setErrorMessage(null)
+                  setFiles(Array.from(event.target.files ?? []))
+                  setCompletedCount(0)
+                  setErrors([])
                 }}
               />
               <p className='text-xs text-muted-foreground'>
-                PDF, Word, Excel ou archive ZIP.
+                PDF, Word, Excel ou archive ZIP. Les fichiers sont ajoutés dans
+                l’ordre de sélection.
               </p>
             </div>
-            <div className='space-y-2'>
-              <Label htmlFor='consultation-document-kind'>Type métier</Label>
-              <Select
-                value={kind}
-                onValueChange={(value) =>
-                  setKind(value as ConsultationDocumentKind)
-                }
-                disabled={mutation.isPending}
-              >
-                <SelectTrigger id='consultation-document-kind'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {consultationDocumentKinds.map((value) => (
-                    <SelectItem key={value} value={value}>
-                      {consultationDocumentKindLabels[value]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {uploadedDocumentId && errorMessage && (
+            {isImporting && (
+              <p role='status' className='text-sm text-muted-foreground'>
+                {completedCount} documents sur {files.length} ajoutés
+              </p>
+            )}
+            {errors.length > 0 && (
               <div
                 role='alert'
                 className='flex gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive'
               >
                 <AlertCircle className='mt-0.5 size-4 shrink-0' />
-                <p>
-                  Le fichier est bien téléversé, mais son rattachement a échoué.
-                  Vous pouvez réessayer sans le renvoyer. {errorMessage}
-                </p>
+                <div>
+                  <p>Certains documents n’ont pas pu être ajoutés.</p>
+                  <ul className='mt-1 list-disc pl-4'>
+                    {errors.map((error) => (
+                      <li key={error}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
               </div>
-            )}
-            {!uploadedDocumentId && errorMessage && (
-              <p role='alert' className='text-sm text-destructive'>
-                {errorMessage}
-              </p>
             )}
           </div>
 
@@ -163,22 +156,17 @@ export function AddDocumentDialog({
             <Button
               type='button'
               variant='outline'
-              onClick={() => onOpenChange(false)}
-              disabled={mutation.isPending}
+              onClick={close}
+              disabled={isImporting}
             >
               Fermer
             </Button>
-            <Button
-              type='submit'
-              disabled={mutation.isPending || (!file && !uploadedDocumentId)}
-            >
-              {mutation.isPending && <Loader2 className='animate-spin' />}
-              {mutation.isPending
-                ? uploadedDocumentId
-                  ? 'Rattachement…'
-                  : 'Téléversement…'
-                : uploadedDocumentId
-                  ? 'Réessayer le rattachement'
+            <Button type='submit' disabled={isImporting || files.length === 0}>
+              {isImporting && <Loader2 className='animate-spin' />}
+              {isImporting
+                ? 'Ajout en cours…'
+                : files.length > 1
+                  ? `Ajouter ${files.length} documents`
                   : 'Ajouter le document'}
             </Button>
           </DialogFooter>

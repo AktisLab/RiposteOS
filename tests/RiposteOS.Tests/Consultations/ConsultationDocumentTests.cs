@@ -20,6 +20,7 @@ public sealed class ConsultationDocumentTests
         Assert.Equal(consultationId, link.ConsultationId);
         Assert.Equal(documentId, link.StoredDocumentId);
         Assert.Equal(ConsultationDocumentKind.TechnicalSpecifications, link.Kind);
+        Assert.Equal(ConsultationDocumentKindOrigin.Manual, link.KindOrigin);
         Assert.Equal(addedAt, link.AddedAt);
     }
 
@@ -47,5 +48,23 @@ public sealed class ConsultationDocumentTests
 
         Assert.Equal(ConsultationDocumentKind.Pricing, link.Kind);
         Assert.Throws<ArgumentOutOfRangeException>(() => link.ChangeKind((ConsultationDocumentKind)999));
+    }
+
+    [Fact]
+    public void AutomaticKindCanBeAppliedOnlyUntilHumanCorrection()
+    {
+        var link = new ConsultationDocument(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            ConsultationDocumentKind.Other,
+            ConsultationDocumentKindOrigin.Automatic,
+            DateTimeOffset.UtcNow);
+
+        link.ApplyAutomaticKind(ConsultationDocumentKind.TechnicalSpecifications);
+        link.ChangeKind(ConsultationDocumentKind.Pricing);
+        link.ApplyAutomaticKind(ConsultationDocumentKind.AdministrativeSpecifications);
+
+        Assert.Equal(ConsultationDocumentKind.Pricing, link.Kind);
+        Assert.Equal(ConsultationDocumentKindOrigin.Manual, link.KindOrigin);
     }
 }

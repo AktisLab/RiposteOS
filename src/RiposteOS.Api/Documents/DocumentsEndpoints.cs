@@ -140,7 +140,7 @@ public static class DocumentsEndpoints
             {
                 content.Position = 0;
                 using var archive = new ZipArchive(content, ZipArchiveMode.Read, leaveOpen: true);
-                if (archive.GetEntry(format.RequiredEntry) is null)
+                if (!archive.Entries.Any(entry => string.Equals(entry.FullName.Replace('\\', '/'), format.RequiredEntry, StringComparison.Ordinal)))
                 {
                     return new UploadValidation(StatusCodes.Status415UnsupportedMediaType, "Le package OOXML est invalide.");
                 }

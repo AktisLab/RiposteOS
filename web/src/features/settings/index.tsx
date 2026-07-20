@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { ChevronRight, Radar } from 'lucide-react'
+import { Bot, ChevronRight, Radar } from 'lucide-react'
 
 export function SettingsOverview() {
   return (
@@ -34,6 +34,21 @@ export function SettingsOverview() {
               <span className='mt-1 block text-sm leading-relaxed text-muted-foreground'>
                 Sources, mots-clés, signaux de pertinence, territoires, CPV et
                 pondération du score.
+              </span>
+            </span>
+            <ChevronRight className='size-5 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground' />
+          </Link>
+          <Link
+            to='/settings/ai'
+            className='group grid grid-cols-[auto_1fr_auto] items-center gap-4 border-t p-5 transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset active:bg-muted/60'
+          >
+            <span className='flex size-11 items-center justify-center rounded-lg border bg-background text-violet-700 dark:text-violet-400'>
+              <Bot className='size-5' />
+            </span>
+            <span className='min-w-0'>
+              <span className='block font-semibold'>IA</span>
+              <span className='mt-1 block text-sm leading-relaxed text-muted-foreground'>
+                Fournisseurs IA et affectation des tâches automatiques.
               </span>
             </span>
             <ChevronRight className='size-5 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground' />

@@ -3,6 +3,7 @@ import { type LinkProps } from '@tanstack/react-router'
 type BaseNavItem = {
   title: string
   badge?: string
+  badgeVariant?: 'default' | 'destructive'
   icon?: React.ElementType
 }
 

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.IO.Compression;
 using RiposteOS.Infrastructure.Documents;
 
 namespace RiposteOS.Tests.Documents;
@@ -41,6 +42,59 @@ public sealed class DoclingDocumentParserTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => parser.ParseAsync(
             "offre.pdf", "application/pdf", new MemoryStream([1]), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task NormalizesWindowsOoxmlEntryNamesBeforeSendingToDocling()
+    {
+        var handler = new StubHandler("""
+            {"status":"success","document":{"json_content":{"pages":{},"texts":[],"tables":[]}}}
+            """);
+        var parser = new DoclingDocumentParser(new HttpClient(handler) { BaseAddress = new Uri("http://docling/") });
+
+        await parser.ParseAsync(
+            "offre.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            new MemoryStream(CreateZip(@"word\document.xml")),
+            CancellationToken.None);
+
+        Assert.Contains("word/document.xml", handler.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(@"word\document.xml", handler.Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SkipsEmptyPassagesReturnedByDocling()
+    {
+        var parser = new DoclingDocumentParser(new HttpClient(new StubHandler("""
+            {"status":"success","document":{"json_content":{"pages":{},"texts":[{"label":"text","text":"   ","prov":[{"page_no":1}]}],"tables":[{"prov":[{"page_no":1}],"data":{"table_cells":[{"text":" "}]}}]}}}
+            """)) { BaseAddress = new Uri("http://docling/") });
+
+        var result = await parser.ParseAsync("offre.pdf", "application/pdf", new MemoryStream([1]), CancellationToken.None);
+
+        Assert.Empty(result.Passages);
+    }
+
+    [Fact]
+    public async Task AcceptsPassagesWithoutProvenance()
+    {
+        var parser = new DoclingDocumentParser(new HttpClient(new StubHandler("""
+            {"status":"success","document":{"json_content":{"pages":{},"texts":[{"label":"text","text":"Sans page","prov":[]}],"tables":[]}}}
+            """)) { BaseAddress = new Uri("http://docling/") });
+
+        var result = await parser.ParseAsync("offre.pdf", "application/pdf", new MemoryStream([1]), CancellationToken.None);
+
+        Assert.Null(Assert.Single(result.Passages).PageNumber);
+    }
+
+    private static byte[] CreateZip(string entryName)
+    {
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            archive.CreateEntry(entryName);
+        }
+
+        return stream.ToArray();
     }
 
     private sealed class StubHandler(string response) : HttpMessageHandler

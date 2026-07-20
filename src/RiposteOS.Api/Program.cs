@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http.Features;
 using RiposteOS.Api.Consultations;
 using RiposteOS.Api.Documents;
 using RiposteOS.Api.Sourcing;
+using RiposteOS.Api.Ai;
 using RiposteOS.Infrastructure.Documents;
 using RiposteOS.Infrastructure;
 using RiposteOS.Infrastructure.Persistence;
@@ -47,6 +48,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 app.MapSourcingEndpoints();
 app.MapDocumentsEndpoints();
 app.MapConsultationsEndpoints();
+app.MapAiEndpoints();
 
 app.Run();
 

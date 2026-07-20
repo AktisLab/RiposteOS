@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using RiposteOS.Core.Documents;
 using RiposteOS.Infrastructure.Documents;
+using RiposteOS.Infrastructure.Ai;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Tests.TestSupport;
 
@@ -37,6 +38,12 @@ public sealed class DocumentProcessingJobTests
             .OrderBy(passage => passage.Ordinal)
             .Select(passage => passage.Text)
             .ToArrayAsync());
+        var execution = await dbContext.Set<RiposteOS.Core.Ai.AiExecutionLog>().SingleAsync();
+        Assert.Equal(RiposteOS.Core.Ai.AiExecutionStatus.Completed, execution.Status);
+        Assert.Equal("Docling", execution.ProviderName);
+        var payload = await dbContext.Set<RiposteOS.Core.Ai.AiExecutionPayload>().SingleAsync();
+        Assert.Contains(document.Sha256, payload.Input);
+        Assert.Contains("Premier", payload.Output);
     }
 
     [Fact]
@@ -59,6 +66,47 @@ public sealed class DocumentProcessingJobTests
         var storedRun = await dbContext.Set<DocumentProcessingRun>().SingleAsync();
         Assert.Equal(DocumentProcessingStatus.Failed, storedRun.Status);
         Assert.Equal("L'analyse du document a échoué. Réessayez.", storedRun.ErrorMessage);
+        Assert.Equal(RiposteOS.Core.Ai.AiExecutionStatus.Failed, (await dbContext.Set<RiposteOS.Core.Ai.AiExecutionLog>().SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task FailureDoesNotPersistPartiallyTrackedPassages()
+    {
+        await using var dbContext = CreateDbContext();
+        var storage = new TestObjectStorage();
+        var document = CreateDocument();
+        var run = new DocumentProcessingRun(document.Id, Now);
+        dbContext.AddRange(document, run);
+        await dbContext.SaveChangesAsync();
+        await storage.PutAsync(document.StorageKey, new MemoryStream([1]), 1, document.ContentType, CancellationToken.None);
+        var parser = new StubParser(new ParsedDocument(1,
+        [
+            new ParsedPassage("Valide", 1, null, null),
+            new ParsedPassage(" ", 1, null, null),
+        ]));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateJob(dbContext, storage, parser).ExecuteAsync(run.Id, CancellationToken.None));
+
+        Assert.Empty(await dbContext.Set<DocumentPassage>().ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task ReprocessingReplacesPartialPassages()
+    {
+        await using var dbContext = CreateDbContext();
+        var storage = new TestObjectStorage();
+        var document = CreateDocument();
+        var run = new DocumentProcessingRun(document.Id, Now);
+        dbContext.AddRange(document, run);
+        await dbContext.SaveChangesAsync();
+        dbContext.Add(new DocumentPassage(run.Id, 1, "Partiel", 1, null, null));
+        await dbContext.SaveChangesAsync();
+        await storage.PutAsync(document.StorageKey, new MemoryStream([1]), 1, document.ContentType, CancellationToken.None);
+
+        await CreateJob(dbContext, storage, new StubParser(new ParsedDocument(1,
+        [new ParsedPassage("Nouveau", 1, null, null)]))).ExecuteAsync(run.Id, CancellationToken.None);
+
+        Assert.Equal(["Nouveau"], await dbContext.Set<DocumentPassage>().Select(passage => passage.Text).ToArrayAsync());
     }
 
     [Fact]
@@ -112,6 +160,9 @@ public sealed class DocumentProcessingJobTests
             new DocumentProcessingStore(dbContext, timeProvider),
             storage,
             parser,
+            new DocumentClassificationStore(dbContext, timeProvider),
+            new AiExecutionRecorder(dbContext, timeProvider),
+            new RecordingBackgroundJobClient(),
             timeProvider,
             NullLogger<DocumentProcessingJob>.Instance);
     }

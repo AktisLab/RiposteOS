@@ -1,5 +1,6 @@
 import type {
   DocumentAnalysis,
+  DocumentClassification,
   ConsultationDocumentKind,
   CreateConsultationRequest,
 } from './api.ts'
@@ -30,6 +31,13 @@ const sizeFormatter = new Intl.NumberFormat('fr-FR', {
   maximumFractionDigits: 1,
 })
 
+type DocumentProcessingPresentation = {
+  label: string
+  isActive: boolean
+  actionLabel?: string
+  retryTarget?: 'analysis' | 'classification'
+}
+
 export function nextConsultationAction(documentCount: number) {
   return documentCount === 0 ? 'Ajouter le DCE' : 'Consulter les documents'
 }
@@ -56,12 +64,12 @@ export function getDocumentAnalysisPresentation(analysis: DocumentAnalysis) {
       return { label: 'Analyse en cours…', isActive: true }
     case 'Completed':
       return {
-        label: `Analysé · ${analysis.pageCount} pages · ${analysis.passageCount} passages`,
+        label: 'Analysé',
         isActive: false,
       }
     case 'Failed':
       return {
-        label: analysis.errorMessage || 'L’analyse a échoué.',
+        label: 'Analyse à reprendre',
         actionLabel: 'Réessayer',
         isActive: false,
       }
@@ -79,13 +87,64 @@ export function getDocumentAnalysisPresentation(analysis: DocumentAnalysis) {
   }
 }
 
-export function hasActiveDocumentAnalysis(
+function getDocumentClassificationPresentation(
+  classification: DocumentClassification | undefined
+) {
+  if (!classification) {
+    return { label: null, isActive: false }
+  }
+
+  switch (classification.status) {
+    case 'NotStarted':
+    case 'NotConfigured':
+      return { label: null, isActive: false }
+    case 'Queued':
+      return { label: 'Classement en attente', isActive: true }
+    case 'Running':
+      return { label: 'Classement en cours…', isActive: true }
+    case 'Completed':
+      return { label: null, isActive: false }
+    case 'Failed':
+      return {
+        label: 'Classement à reprendre',
+        actionLabel: 'Réessayer',
+        isActive: false,
+      }
+  }
+}
+
+export function getDocumentProcessingPresentation(
+  analysis: DocumentAnalysis,
+  classification: DocumentClassification | undefined
+): DocumentProcessingPresentation {
+  const analysisPresentation = getDocumentAnalysisPresentation(analysis)
+  if (analysis.status !== 'Completed') {
+    return analysisPresentation.actionLabel
+      ? { ...analysisPresentation, retryTarget: 'analysis' as const }
+      : analysisPresentation
+  }
+
+  const classificationPresentation =
+    getDocumentClassificationPresentation(classification)
+  if (!classificationPresentation.label) return analysisPresentation
+
+  return classificationPresentation.actionLabel
+    ? { ...classificationPresentation, retryTarget: 'classification' as const }
+    : classificationPresentation
+}
+
+export function hasActiveDocumentProcessing(
   documents: {
     analysis: DocumentAnalysis
+    classification?: DocumentClassification
   }[]
 ) {
   return documents.some(
-    (document) => getDocumentAnalysisPresentation(document.analysis).isActive
+    (document) =>
+      getDocumentProcessingPresentation(
+        document.analysis,
+        document.classification
+      ).isActive
   )
 }
 

@@ -257,6 +257,7 @@ public sealed class ConsultationsEndpointsTests(RiposteWebApplicationFactory fac
         Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
         Assert.Equal(storedDocument.Id, first!.Id);
         Assert.Equal("TechnicalSpecifications", first.Kind);
+        Assert.Equal("Manual", first.KindOrigin);
         Assert.Equal($"/api/documents/{storedDocument.Id}/content", first.DownloadUrl);
         Assert.Single(documents!);
     }
@@ -413,6 +414,51 @@ public sealed class ConsultationsEndpointsTests(RiposteWebApplicationFactory fac
         Assert.Equal(HttpStatusCode.NoContent, detached.StatusCode);
         Assert.Empty(empty!);
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
+    public async Task DocumentCanBeAttachedWithoutAKindForAutomaticClassification()
+    {
+        await factory.ResetAsync();
+        var consultation = new Consultation("Logiciel métier", "Acheteur", null, null, Now);
+        var storedDocument = CreateStoredDocument();
+        await SeedAsync(consultation, storedDocument);
+
+        using var response = await factory.CreateClient().PostAsJsonAsync(
+            $"/api/consultations/{consultation.Id}/documents",
+            new AttachConsultationDocumentRequest(storedDocument.Id, null));
+        var document = await response.Content.ReadFromJsonAsync<ConsultationDocumentResponse>();
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal("Other", document!.Kind);
+        Assert.Equal("Automatic", document.KindOrigin);
+    }
+
+    [Fact]
+    public async Task AutomaticDocumentClassificationCanBeQueuedWithoutOverridingManualDocuments()
+    {
+        await factory.ResetAsync();
+        var consultation = new Consultation("Logiciel métier", "Acheteur", null, null, Now);
+        var automatic = CreateStoredDocument();
+        var manual = CreateStoredDocument();
+        await SeedAsync(consultation, automatic, manual);
+        await SeedAsync(
+            new ConsultationDocument(consultation.Id, automatic.Id, ConsultationDocumentKind.Other, ConsultationDocumentKindOrigin.Automatic, Now),
+            new ConsultationDocument(consultation.Id, manual.Id, ConsultationDocumentKind.Pricing, Now));
+        var client = factory.CreateClient();
+
+        using var queued = await client.PostAsync($"/api/consultations/{consultation.Id}/documents/{automatic.Id}/classification", null);
+        var queuedDocument = await queued.Content.ReadFromJsonAsync<ConsultationDocumentResponse>();
+        using var manualResult = await client.PostAsync($"/api/consultations/{consultation.Id}/documents/{manual.Id}/classification", null);
+        var manualDocument = await manualResult.Content.ReadFromJsonAsync<ConsultationDocumentResponse>();
+        using var missing = await client.PostAsync($"/api/consultations/{consultation.Id}/documents/{Guid.NewGuid()}/classification", null);
+
+        Assert.Equal(HttpStatusCode.Accepted, queued.StatusCode);
+        Assert.Equal("Queued", queuedDocument!.Classification.Status);
+        Assert.Equal(HttpStatusCode.Accepted, manualResult.StatusCode);
+        Assert.Equal("NotStarted", manualDocument!.Classification.Status);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.NotNull(factory.Jobs.CreatedJob);
     }
 
     [Fact]

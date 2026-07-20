@@ -43,9 +43,11 @@ export type ConsultationDocument = {
   size: number
   createdAt: string
   kind: ConsultationDocumentKind
+  kindOrigin: 'Automatic' | 'Manual'
   addedAt: string
   downloadUrl: string
   analysis: DocumentAnalysis
+  classification: DocumentClassification
 }
 
 export type DocumentAnalysisStatus =
@@ -64,6 +66,27 @@ export type DocumentAnalysis = {
   failedAt: string | null
   pageCount: number
   passageCount: number
+  errorMessage: string | null
+}
+
+export type DocumentClassificationStatus =
+  | 'NotStarted'
+  | 'Queued'
+  | 'Running'
+  | 'Completed'
+  | 'Failed'
+  | 'NotConfigured'
+
+export type DocumentClassification = {
+  status: DocumentClassificationStatus
+  proposedKind: ConsultationDocumentKind | null
+  confidence: 'High' | 'Medium' | 'Low' | null
+  queuedAt: string | null
+  startedAt: string | null
+  completedAt: string | null
+  failedAt: string | null
+  providerName: string | null
+  model: string | null
   errorMessage: string | null
 }
 
@@ -143,17 +166,13 @@ export const uploadDocument = (file: File) => {
   })
 }
 
-export const attachDocument = (
-  consultationId: string,
-  documentId: string,
-  kind: ConsultationDocumentKind
-) =>
+export const attachDocument = (consultationId: string, documentId: string) =>
   apiRequest<ConsultationDocument>(
     `/api/consultations/${consultationId}/documents`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ documentId, kind }),
+      body: JSON.stringify({ documentId }),
       errorMessage: 'Impossible de rattacher le document à la consultation.',
     }
   )
@@ -194,6 +213,18 @@ export const requestDocumentAnalysis = (
     {
       method: 'POST',
       errorMessage: 'Impossible de relancer l’analyse du document.',
+    }
+  )
+
+export const retryDocumentClassification = (
+  consultationId: string,
+  documentId: string
+) =>
+  apiRequest<ConsultationDocument>(
+    `/api/consultations/${consultationId}/documents/${documentId}/classification`,
+    {
+      method: 'POST',
+      errorMessage: 'Impossible de relancer le classement du document.',
     }
   )
 

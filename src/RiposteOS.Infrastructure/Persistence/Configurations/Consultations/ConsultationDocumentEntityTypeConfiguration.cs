@@ -16,6 +16,12 @@ public sealed class ConsultationDocumentEntityTypeConfiguration
             .HasConversion<string>()
             .HasMaxLength(64)
             .IsRequired();
+        builder.Property(document => document.KindOrigin)
+            .HasConversion<string>()
+            .HasMaxLength(16)
+            .HasSentinel(ConsultationDocumentKindOrigin.Manual)
+            .HasDefaultValue(ConsultationDocumentKindOrigin.Manual)
+            .IsRequired();
         builder.Property(document => document.AddedAt)
             .HasDefaultValueSql(DatabaseFunctions.Now);
         builder.HasIndex(document => new

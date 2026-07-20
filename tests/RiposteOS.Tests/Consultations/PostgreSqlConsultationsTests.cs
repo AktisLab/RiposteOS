@@ -8,6 +8,7 @@ using RiposteOS.Core.Consultations;
 using RiposteOS.Core.Documents;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Infrastructure.Consultations;
+using RiposteOS.Infrastructure.Ai;
 using RiposteOS.Infrastructure.Documents;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Tests.TestSupport;
@@ -288,6 +289,7 @@ public sealed class PostgreSqlConsultationsTests(PostgreSqlFixture fixture)
             dbContext,
             timeProvider,
             new DocumentProcessingStore(dbContext, timeProvider),
+            new DocumentClassificationStore(dbContext, timeProvider),
             new RecordingBackgroundJobClient());
     }
 

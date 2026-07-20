@@ -2,13 +2,32 @@ type ApiRequestOptions = RequestInit & {
   errorMessage: string
 }
 
+type ApiRequestWithOptionalNotFound = ApiRequestOptions & {
+  allowNotFound: true
+}
+
+export function apiRequest<T>(
+  path: string,
+  options: ApiRequestWithOptionalNotFound
+): Promise<T | null>
+export function apiRequest<T>(
+  path: string,
+  options: ApiRequestOptions
+): Promise<T>
 export async function apiRequest<T>(
   path: string,
-  { errorMessage, ...options }: ApiRequestOptions
+  {
+    errorMessage,
+    allowNotFound,
+    ...options
+  }: ApiRequestOptions & {
+    allowNotFound?: boolean
+  }
 ): Promise<T> {
   const response = await fetch(path, options)
 
   if (!response.ok) {
+    if (allowNotFound && response.status === 404) return null as T
     throw new Error(await getApiErrorMessage(response, errorMessage))
   }
 

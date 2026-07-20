@@ -5,7 +5,9 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using RiposteOS.Core.Consultations;
 using RiposteOS.Core.Documents;
+using RiposteOS.Core.Ai;
 using RiposteOS.Core.Sourcing;
+using RiposteOS.Infrastructure.Ai;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Infrastructure.Documents;
 
@@ -15,6 +17,7 @@ public sealed class ConsultationsFacade(
     RiposteDbContext dbContext,
     TimeProvider timeProvider,
     DocumentProcessingStore processingStore,
+    DocumentClassificationStore classificationStore,
     IBackgroundJobClient jobClient)
 {
     private static readonly ConsultationGridifyMapper ConsultationMapper = new();
@@ -120,6 +123,9 @@ public sealed class ConsultationsFacade(
             join run in dbContext.Set<DocumentProcessingRun>().AsNoTracking()
                 on document.Id equals run.StoredDocumentId into runs
             from run in runs.DefaultIfEmpty()
+            join classification in dbContext.Set<ConsultationDocumentClassification>().AsNoTracking()
+                on new { link.ConsultationId, link.StoredDocumentId } equals new { classification.ConsultationId, classification.StoredDocumentId } into classifications
+            from classification in classifications.DefaultIfEmpty()
             where link.ConsultationId == consultationId
             orderby link.AddedAt descending, document.Id
             select new
@@ -130,8 +136,10 @@ public sealed class ConsultationsFacade(
                 document.Size,
                 document.CreatedAt,
                 link.Kind,
+                link.KindOrigin,
                 link.AddedAt,
                 Run = run,
+                Classification = classification,
             }).ToArrayAsync(cancellationToken);
 
         return documents.Select(document => new ConsultationDocumentResult(
@@ -141,8 +149,10 @@ public sealed class ConsultationsFacade(
             document.Size,
             document.CreatedAt,
             document.Kind,
+            document.KindOrigin,
             document.AddedAt,
-            ToAnalysis(document.ContentType, document.Run))).ToArray();
+            ToAnalysis(document.ContentType, document.Run),
+            ToClassification(document.Classification))).ToArray();
     }
 
     public async Task<DocumentPassageResult[]?> ListDocumentPassagesAsync(
@@ -184,7 +194,7 @@ public sealed class ConsultationsFacade(
     public async Task<ConsultationDocumentAttachmentResult> AttachDocumentAsync(
         Guid consultationId,
         Guid storedDocumentId,
-        ConsultationDocumentKind kind,
+        ConsultationDocumentKind? kind,
         CancellationToken cancellationToken)
     {
         if (!await dbContext.Set<Consultation>()
@@ -216,7 +226,10 @@ public sealed class ConsultationsFacade(
             dbContext.Set<ConsultationDocument>().Add(new ConsultationDocument(
                 consultationId,
                 storedDocumentId,
-                kind,
+                kind ?? ConsultationDocumentKind.Other,
+                kind.HasValue
+                    ? ConsultationDocumentKindOrigin.Manual
+                    : ConsultationDocumentKindOrigin.Automatic,
                 timeProvider.GetUtcNow()));
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -239,6 +252,16 @@ public sealed class ConsultationsFacade(
         if (processing is { Enqueue: true })
         {
             await EnqueueAsync(processing.Run.Id);
+        }
+
+        if (created && kind is null && processing is { Run.Status: DocumentProcessingStatus.Completed })
+        {
+            var queued = await classificationStore.QueueAsync(consultationId, storedDocumentId, cancellationToken);
+            if (queued.Enqueue)
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+                jobClient.Enqueue<DocumentClassificationJob>(job => job.ExecuteAsync(queued.Classification.Id, CancellationToken.None));
+            }
         }
 
         return new ConsultationDocumentAttachmentResult(
@@ -312,6 +335,32 @@ public sealed class ConsultationsFacade(
 
         link.ChangeKind(kind);
         await dbContext.SaveChangesAsync(cancellationToken);
+        return await GetDocumentAsync(consultationId, storedDocumentId, cancellationToken);
+    }
+
+    public async Task<ConsultationDocumentResult?> RetryDocumentClassificationAsync(
+        Guid consultationId,
+        Guid storedDocumentId,
+        CancellationToken cancellationToken)
+    {
+        var link = await dbContext.Set<ConsultationDocument>().AsNoTracking().SingleOrDefaultAsync(
+            item => item.ConsultationId == consultationId && item.StoredDocumentId == storedDocumentId,
+            cancellationToken);
+        if (link is null)
+        {
+            return null;
+        }
+
+        if (link.KindOrigin == ConsultationDocumentKindOrigin.Automatic)
+        {
+            var queued = await classificationStore.QueueAsync(consultationId, storedDocumentId, cancellationToken);
+            if (queued.Enqueue)
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+                jobClient.Enqueue<DocumentClassificationJob>(job => job.ExecuteAsync(queued.Classification.Id, CancellationToken.None));
+            }
+        }
+
         return await GetDocumentAsync(consultationId, storedDocumentId, cancellationToken);
     }
 
@@ -398,6 +447,9 @@ public sealed class ConsultationsFacade(
             join run in dbContext.Set<DocumentProcessingRun>().AsNoTracking()
                 on storedDocument.Id equals run.StoredDocumentId into runs
             from run in runs.DefaultIfEmpty()
+            join classification in dbContext.Set<ConsultationDocumentClassification>().AsNoTracking()
+                on new { link.ConsultationId, link.StoredDocumentId } equals new { classification.ConsultationId, classification.StoredDocumentId } into classifications
+            from classification in classifications.DefaultIfEmpty()
             where link.ConsultationId == consultationId
                 && link.StoredDocumentId == storedDocumentId
             select new
@@ -408,8 +460,10 @@ public sealed class ConsultationsFacade(
                 storedDocument.Size,
                 storedDocument.CreatedAt,
                 link.Kind,
+                link.KindOrigin,
                 link.AddedAt,
                 Run = run,
+                Classification = classification,
             }).SingleOrDefaultAsync(cancellationToken);
 
         return document is null
@@ -421,8 +475,10 @@ public sealed class ConsultationsFacade(
                 document.Size,
                 document.CreatedAt,
                 document.Kind,
+                document.KindOrigin,
                 document.AddedAt,
-                ToAnalysis(document.ContentType, document.Run));
+                ToAnalysis(document.ContentType, document.Run),
+                ToClassification(document.Classification));
     }
 
     private static DocumentAnalysisResult ToAnalysis(string contentType, DocumentProcessingRun? run) =>
@@ -439,6 +495,21 @@ public sealed class ConsultationsFacade(
                 run.PageCount,
                 run.PassageCount,
                 run.ErrorMessage);
+
+    private static DocumentClassificationResult ToClassification(ConsultationDocumentClassification? classification) =>
+        classification is null
+            ? new DocumentClassificationResult("NotStarted", null, null, null, null, null, null, null, null, null)
+            : new DocumentClassificationResult(
+                classification.Status.ToString(),
+                classification.ProposedKind?.ToString(),
+                classification.Confidence?.ToString(),
+                classification.QueuedAt,
+                classification.StartedAt,
+                classification.CompletedAt,
+                classification.FailedAt,
+                classification.ProviderName,
+                classification.Model,
+                classification.ErrorMessage);
 
     private static ConsultationResult ToResult(
         Consultation consultation,

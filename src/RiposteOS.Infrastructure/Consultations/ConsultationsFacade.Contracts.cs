@@ -53,8 +53,10 @@ public sealed record ConsultationDocumentResult(
     long Size,
     DateTimeOffset CreatedAt,
     ConsultationDocumentKind Kind,
+    ConsultationDocumentKindOrigin KindOrigin,
     DateTimeOffset AddedAt,
-    DocumentAnalysisResult Analysis);
+    DocumentAnalysisResult Analysis,
+    DocumentClassificationResult Classification);
 
 public sealed record DocumentAnalysisResult(
     string Status,
@@ -64,6 +66,18 @@ public sealed record DocumentAnalysisResult(
     DateTimeOffset? FailedAt,
     int PageCount,
     int PassageCount,
+    string? ErrorMessage);
+
+public sealed record DocumentClassificationResult(
+    string Status,
+    string? ProposedKind,
+    string? Confidence,
+    DateTimeOffset? QueuedAt,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? CompletedAt,
+    DateTimeOffset? FailedAt,
+    string? ProviderName,
+    string? Model,
     string? ErrorMessage);
 
 public sealed record DocumentPassageResult(

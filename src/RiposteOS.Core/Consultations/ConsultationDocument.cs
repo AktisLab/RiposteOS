@@ -7,12 +7,30 @@ public sealed class ConsultationDocument
         Guid storedDocumentId,
         ConsultationDocumentKind kind,
         DateTimeOffset addedAt)
+        : this(
+            consultationId,
+            storedDocumentId,
+            kind,
+            ConsultationDocumentKindOrigin.Manual,
+            addedAt)
+    {
+    }
+
+    public ConsultationDocument(
+        Guid consultationId,
+        Guid storedDocumentId,
+        ConsultationDocumentKind kind,
+        ConsultationDocumentKindOrigin kindOrigin,
+        DateTimeOffset addedAt)
     {
         ConsultationId = ValidateIdentifier(consultationId, nameof(consultationId));
         StoredDocumentId = ValidateIdentifier(storedDocumentId, nameof(storedDocumentId));
         Kind = Enum.IsDefined(kind)
             ? kind
             : throw new ArgumentOutOfRangeException(nameof(kind));
+        KindOrigin = Enum.IsDefined(kindOrigin)
+            ? kindOrigin
+            : throw new ArgumentOutOfRangeException(nameof(kindOrigin));
         AddedAt = addedAt;
     }
 
@@ -22,10 +40,25 @@ public sealed class ConsultationDocument
 
     public ConsultationDocumentKind Kind { get; private set; }
 
+    public ConsultationDocumentKindOrigin KindOrigin { get; private set; }
+
     public DateTimeOffset AddedAt { get; private set; }
 
     public void ChangeKind(ConsultationDocumentKind kind)
     {
+        Kind = Enum.IsDefined(kind)
+            ? kind
+            : throw new ArgumentOutOfRangeException(nameof(kind));
+        KindOrigin = ConsultationDocumentKindOrigin.Manual;
+    }
+
+    public void ApplyAutomaticKind(ConsultationDocumentKind kind)
+    {
+        if (KindOrigin != ConsultationDocumentKindOrigin.Automatic)
+        {
+            return;
+        }
+
         Kind = Enum.IsDefined(kind)
             ? kind
             : throw new ArgumentOutOfRangeException(nameof(kind));

@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
@@ -11,8 +12,9 @@ public sealed class DoclingDocumentParser(HttpClient client) : IDocumentParser
         Stream content,
         CancellationToken cancellationToken)
     {
+        await using var normalizedContent = await NormalizeOoxmlAsync(content, contentType, cancellationToken);
         using var form = new MultipartFormDataContent();
-        using var file = new StreamContent(content);
+        using var file = new StreamContent(normalizedContent ?? content);
         file.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
         form.Add(file, "files", fileName);
         form.Add(new StringContent("json"), "to_formats");
@@ -48,21 +50,57 @@ public sealed class DoclingDocumentParser(HttpClient client) : IDocumentParser
                 continue;
             }
 
-            passages.Add(new ParsedPassage(
-                value,
-                GetPageNumber(item),
-                sectionTitle,
-                null));
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                passages.Add(new ParsedPassage(
+                    value,
+                    GetPageNumber(item),
+                    sectionTitle,
+                    null));
+            }
         }
 
         foreach (var table in document.GetProperty("tables").EnumerateArray())
         {
             var tableText = string.Join('\n', table.GetProperty("data").GetProperty("table_cells").EnumerateArray()
-                .Select(cell => cell.GetProperty("text").GetString()!.Trim()));
-            passages.Add(new ParsedPassage(tableText, GetPageNumber(table), null, null));
+                .Select(cell => cell.GetProperty("text").GetString()!.Trim())
+                .Where(text => !string.IsNullOrWhiteSpace(text)));
+            if (!string.IsNullOrWhiteSpace(tableText))
+            {
+                passages.Add(new ParsedPassage(tableText, GetPageNumber(table), null, null));
+            }
         }
 
         return new ParsedDocument(pageCount, passages);
+    }
+
+    private static async Task<MemoryStream?> NormalizeOoxmlAsync(
+        Stream content,
+        string contentType,
+        CancellationToken cancellationToken)
+    {
+        if (contentType is not (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+        {
+            return null;
+        }
+
+        var normalized = new MemoryStream();
+        using (var source = new ZipArchive(content, ZipArchiveMode.Read, leaveOpen: true))
+        using (var target = new ZipArchive(normalized, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var entry in source.Entries)
+            {
+                var normalizedEntry = target.CreateEntry(entry.FullName.Replace('\\', '/'));
+                await using var sourceContent = entry.Open();
+                await using var targetContent = normalizedEntry.Open();
+                await sourceContent.CopyToAsync(targetContent, cancellationToken);
+            }
+        }
+
+        normalized.Position = 0;
+        return normalized;
     }
 
     private static bool IsHeading(JsonElement element) =>
@@ -71,7 +109,16 @@ public sealed class DoclingDocumentParser(HttpClient client) : IDocumentParser
 
     private static int? GetPageNumber(JsonElement element)
     {
-        return element.GetProperty("prov")[0].GetProperty("page_no").GetInt32();
+        if (element.TryGetProperty("prov", out var provenance)
+            && provenance.ValueKind == JsonValueKind.Array
+            && provenance.GetArrayLength() > 0
+            && provenance[0].TryGetProperty("page_no", out var pageNumber)
+            && pageNumber.TryGetInt32(out var value))
+        {
+            return value;
+        }
+
+        return null;
     }
 
 }

@@ -7,6 +7,8 @@ public sealed record ConsultationDocumentResponse(
     long Size,
     DateTimeOffset CreatedAt,
     string Kind,
+    string KindOrigin,
     DateTimeOffset AddedAt,
     string DownloadUrl,
-    DocumentAnalysisResponse Analysis);
+    DocumentAnalysisResponse Analysis,
+    DocumentClassificationResponse Classification);

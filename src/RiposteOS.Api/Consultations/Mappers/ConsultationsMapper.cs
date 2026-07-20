@@ -22,6 +22,7 @@ public static partial class ConsultationsMapper
             document.Size,
             document.CreatedAt,
             document.Kind.ToString(),
+            document.KindOrigin.ToString(),
             document.AddedAt,
             $"/api/documents/{document.Id}/content",
             new DocumentAnalysisResponse(
@@ -32,7 +33,18 @@ public static partial class ConsultationsMapper
                 document.Analysis.FailedAt,
                 document.Analysis.PageCount,
                 document.Analysis.PassageCount,
-                document.Analysis.ErrorMessage));
+                document.Analysis.ErrorMessage),
+            new DocumentClassificationResponse(
+                document.Classification.Status,
+                document.Classification.ProposedKind,
+                document.Classification.Confidence,
+                document.Classification.QueuedAt,
+                document.Classification.StartedAt,
+                document.Classification.CompletedAt,
+                document.Classification.FailedAt,
+                document.Classification.ProviderName,
+                document.Classification.Model,
+                document.Classification.ErrorMessage));
 
     public static ConsultationDocumentResponse[] ToDocumentResponses(
         IEnumerable<ConsultationDocumentResult> documents) =>

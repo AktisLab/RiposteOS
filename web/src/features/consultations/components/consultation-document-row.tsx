@@ -1,6 +1,5 @@
-import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Bug, Download, Loader2, RotateCcw, Trash2 } from 'lucide-react'
+import { Download, FileText, Loader2, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -32,15 +31,15 @@ import {
   consultationsQueryRoot,
   detachConsultationDocument,
   requestDocumentAnalysis,
+  retryDocumentClassification,
   updateConsultationDocumentKind,
 } from '../api'
 import {
   consultationDocumentKindLabels,
   formatDateTime,
   formatFileSize,
-  getDocumentAnalysisPresentation,
+  getDocumentProcessingPresentation,
 } from '../presentation'
-import { DocumentAnalysisDrawer } from './document-analysis-drawer'
 
 type ConsultationDocumentRowProps = {
   consultationId: string
@@ -52,7 +51,6 @@ export function ConsultationDocumentRow({
   document,
 }: ConsultationDocumentRowProps) {
   const queryClient = useQueryClient()
-  const [debugOpen, setDebugOpen] = useState(false)
   const invalidate = (includeCount: boolean) => {
     void queryClient.invalidateQueries({
       queryKey: consultationDocumentsQueryKey(consultationId),
@@ -89,22 +87,47 @@ export function ConsultationDocumentRow({
     },
     onError: (error) => toast.error(error.message),
   })
+  const classificationMutation = useMutation({
+    mutationFn: () => retryDocumentClassification(consultationId, document.id),
+    onSuccess: () => {
+      invalidate(false)
+      toast.success('Classement du document mis en file')
+    },
+    onError: (error) => toast.error(error.message),
+  })
   const pending =
     categoryMutation.isPending ||
     detachMutation.isPending ||
-    analysisMutation.isPending
-  const analysis = getDocumentAnalysisPresentation(document.analysis)
+    analysisMutation.isPending ||
+    classificationMutation.isPending
+  const processing = getDocumentProcessingPresentation(
+    document.analysis,
+    document.classification
+  )
+  const retryMutation =
+    processing.retryTarget === 'classification'
+      ? classificationMutation
+      : analysisMutation
 
   return (
-    <>
-      <TableRow>
-        <TableCell>
-          <p className='font-medium'>{document.originalFileName}</p>
-          <p className='text-xs text-muted-foreground'>
-            {document.contentType}
-          </p>
-        </TableCell>
-        <TableCell>
+    <TableRow>
+      <TableCell className='min-w-72'>
+        <div className='flex items-start gap-3'>
+          <FileText
+            className='mt-0.5 size-4 shrink-0 text-muted-foreground'
+            aria-hidden='true'
+          />
+          <div className='min-w-0'>
+            <p className='truncate font-medium'>{document.originalFileName}</p>
+            <p className='mt-0.5 text-xs text-muted-foreground'>
+              {formatFileSize(document.size)} ·{' '}
+              {formatDateTime(document.addedAt)}
+            </p>
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className='w-60'>
+        <div className='space-y-1.5'>
           <Select
             value={document.kind}
             onValueChange={(value) =>
@@ -114,7 +137,7 @@ export function ConsultationDocumentRow({
           >
             <SelectTrigger
               size='sm'
-              className='min-w-52'
+              className='w-full'
               aria-label={`Catégorie de ${document.originalFileName}`}
             >
               <SelectValue />
@@ -127,114 +150,94 @@ export function ConsultationDocumentRow({
               ))}
             </SelectContent>
           </Select>
-        </TableCell>
-        <TableCell className='tabular-nums'>
-          {formatFileSize(document.size)}
-        </TableCell>
-        <TableCell>{formatDateTime(document.addedAt)}</TableCell>
-        <TableCell>
-          <div className='flex min-w-48 items-center gap-2'>
-            <Badge
-              variant={
-                document.analysis.status === 'Failed'
-                  ? 'destructive'
-                  : 'outline'
-              }
-              className={
-                document.analysis.status === 'Running' ? 'gap-1.5' : ''
-              }
+        </div>
+      </TableCell>
+      <TableCell className='w-44'>
+        <div className='flex items-center gap-2'>
+          <Badge
+            variant={processing.retryTarget ? 'destructive' : 'outline'}
+            className={processing.isActive ? 'gap-1.5' : ''}
+          >
+            {processing.isActive && <Loader2 className='animate-spin' />}
+            {processing.label}
+          </Badge>
+          {processing.actionLabel && (
+            <Button
+              variant='ghost'
+              size='icon'
+              className='size-7'
+              disabled={pending}
+              onClick={() => retryMutation.mutate()}
+              aria-label={`Relancer le traitement de ${document.originalFileName}`}
+              title='Relancer le traitement'
             >
-              {document.analysis.status === 'Running' && (
+              {retryMutation.isPending ? (
                 <Loader2 className='animate-spin' />
+              ) : (
+                <RotateCcw />
               )}
-              {analysis.label}
-            </Badge>
-            {analysis.actionLabel && (
+            </Button>
+          )}
+        </div>
+      </TableCell>
+      <TableCell className='w-20 text-right'>
+        <div className='flex justify-end gap-1'>
+          <Button
+            variant='ghost'
+            size='icon'
+            className='size-8'
+            title='Télécharger le document'
+            asChild
+          >
+            <a
+              href={document.downloadUrl}
+              download
+              aria-label={`Télécharger ${document.originalFileName}`}
+            >
+              <Download />
+            </a>
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
               <Button
                 variant='ghost'
-                size='sm'
+                size='icon'
+                className='size-8'
                 disabled={pending}
-                onClick={() => analysisMutation.mutate()}
+                aria-label={`Détacher ${document.originalFileName}`}
+                title='Détacher le document'
               >
-                {analysisMutation.isPending ? (
+                {detachMutation.isPending ? (
                   <Loader2 className='animate-spin' />
                 ) : (
-                  <RotateCcw />
+                  <Trash2 />
                 )}
-                {analysis.actionLabel}
               </Button>
-            )}
-            {import.meta.env.DEV &&
-              document.analysis.status === 'Completed' && (
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  onClick={() => setDebugOpen(true)}
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Détacher ce document ?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {document.originalFileName} restera stocké, mais ne fera plus
+                  partie de cette consultation.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={detachMutation.isPending}>
+                  Annuler
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  className='bg-destructive text-white hover:bg-destructive/90'
+                  disabled={detachMutation.isPending}
+                  onClick={() => detachMutation.mutate()}
                 >
-                  <Bug />
-                  DEBUG
-                </Button>
-              )}
-          </div>
-        </TableCell>
-        <TableCell className='text-right'>
-          <div className='flex justify-end gap-1'>
-            <Button variant='ghost' size='sm' asChild>
-              <a href={document.downloadUrl} download>
-                <Download />
-                Télécharger
-              </a>
-            </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  variant='ghost'
-                  size='icon'
-                  disabled={pending}
-                  aria-label={`Détacher ${document.originalFileName}`}
-                  title='Détacher le document'
-                >
-                  {detachMutation.isPending ? (
-                    <Loader2 className='animate-spin' />
-                  ) : (
-                    <Trash2 />
-                  )}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Détacher ce document ?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {document.originalFileName} restera stocké, mais ne fera
-                    plus partie de cette consultation.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel disabled={detachMutation.isPending}>
-                    Annuler
-                  </AlertDialogCancel>
-                  <AlertDialogAction
-                    className='bg-destructive text-white hover:bg-destructive/90'
-                    disabled={detachMutation.isPending}
-                    onClick={() => detachMutation.mutate()}
-                  >
-                    Détacher
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        </TableCell>
-      </TableRow>
-      {import.meta.env.DEV && (
-        <DocumentAnalysisDrawer
-          consultationId={consultationId}
-          documentId={document.id}
-          documentName={document.originalFileName}
-          open={debugOpen}
-          onOpenChange={setDebugOpen}
-        />
-      )}
-    </>
+                  Détacher
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </TableCell>
+    </TableRow>
   )
 }

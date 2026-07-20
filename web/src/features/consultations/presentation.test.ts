@@ -5,7 +5,8 @@ import {
   formatConsultationDeadline,
   formatFileSize,
   getDocumentAnalysisPresentation,
-  hasActiveDocumentAnalysis,
+  getDocumentProcessingPresentation,
+  hasActiveDocumentProcessing,
   nextConsultationAction,
   normalizeConsultationForm,
 } from './presentation.ts'
@@ -16,6 +17,68 @@ test('presents consultation workflow values', () => {
   assert.equal(formatConsultationDeadline(null), 'Non renseignée')
   assert.equal(formatFileSize(1536), '1,5 Ko')
   assert.equal(consultationDocumentKindLabels.TechnicalSpecifications, 'CCTP')
+})
+
+test('presents the document processing pipeline', () => {
+  assert.deepEqual(
+    getDocumentProcessingPresentation(
+      {
+        status: 'Completed',
+        queuedAt: null,
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+        pageCount: 3,
+        passageCount: 20,
+        errorMessage: null,
+      },
+      {
+        status: 'Running',
+        proposedKind: null,
+        confidence: null,
+        queuedAt: null,
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+        providerName: null,
+        model: null,
+        errorMessage: null,
+      }
+    ),
+    {
+      label: 'Classement en cours…',
+      isActive: true,
+    }
+  )
+  assert.equal(
+    hasActiveDocumentProcessing([
+      {
+        analysis: {
+          status: 'Completed',
+          queuedAt: null,
+          startedAt: null,
+          completedAt: null,
+          failedAt: null,
+          pageCount: 3,
+          passageCount: 20,
+          errorMessage: null,
+        },
+        classification: {
+          status: 'Queued',
+          proposedKind: null,
+          confidence: null,
+          queuedAt: null,
+          startedAt: null,
+          completedAt: null,
+          failedAt: null,
+          providerName: null,
+          model: null,
+          errorMessage: null,
+        },
+      },
+    ]),
+    true
+  )
 })
 
 test('presents document analysis states', () => {
@@ -30,7 +93,7 @@ test('presents document analysis states', () => {
       passageCount: 42,
       errorMessage: null,
     }),
-    { label: 'Analysé · 12 pages · 42 passages', isActive: false }
+    { label: 'Analysé', isActive: false }
   )
   assert.equal(
     getDocumentAnalysisPresentation({
@@ -46,7 +109,7 @@ test('presents document analysis states', () => {
     'Réessayer'
   )
   assert.equal(
-    hasActiveDocumentAnalysis([
+    hasActiveDocumentProcessing([
       {
         analysis: {
           status: 'Running',

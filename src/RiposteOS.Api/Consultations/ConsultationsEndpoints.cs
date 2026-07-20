@@ -120,9 +120,22 @@ public static class ConsultationsEndpoints
             ConsultationsFacade consultations,
             CancellationToken cancellationToken) =>
         {
-            if (request.DocumentId == Guid.Empty
-                || !Enum.TryParse<ConsultationDocumentKind>(request.Kind, true, out var kind)
-                || !Enum.IsDefined(kind))
+            ConsultationDocumentKind? kind = null;
+            if (!string.IsNullOrWhiteSpace(request.Kind))
+            {
+                if (!Enum.TryParse<ConsultationDocumentKind>(request.Kind, true, out var parsedKind)
+                    || !Enum.IsDefined(parsedKind))
+                {
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["document"] = ["Le document ou son type métier est invalide."],
+                    });
+                }
+
+                kind = parsedKind;
+            }
+
+            if (request.DocumentId == Guid.Empty)
             {
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
@@ -174,6 +187,23 @@ public static class ConsultationsEndpoints
             return result.Status == ConsultationDocumentProcessingStatus.Queued
                 ? TypedResults.Accepted($"/api/consultations/{consultationId}/documents/{documentId}", response)
                 : TypedResults.Ok(response);
+        });
+
+        group.MapPost("/consultations/{consultationId:guid}/documents/{documentId:guid}/classification", async Task<IResult> (
+            Guid consultationId,
+            Guid documentId,
+            ConsultationsFacade consultations,
+            CancellationToken cancellationToken) =>
+        {
+            var document = await consultations.RetryDocumentClassificationAsync(
+                consultationId,
+                documentId,
+                cancellationToken);
+            return document is null
+                ? TypedResults.NotFound()
+                : TypedResults.Accepted(
+                    $"/api/consultations/{consultationId}/documents/{documentId}",
+                    ConsultationsMapper.ToDocumentResponse(document));
         });
 
         group.MapGet("/consultations/{consultationId:guid}/documents/{documentId:guid}/analysis/passages", async Task<IResult> (

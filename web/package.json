@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && tsc -b",
-    "test": "node --test src/features/consultations/gridify.test.ts src/features/consultations/presentation.test.ts src/features/opportunities/gridify.test.ts src/features/opportunities/match-reason.test.ts src/features/opportunities/opportunity-presentation.test.ts src/features/settings/country-codes.test.ts src/features/settings/sourcing-schedule.test.ts src/lib/api-client.test.ts src/lib/cpv-catalog.test.ts src/lib/sourcing-source.test.ts",
+    "test": "node --test src/features/consultations/gridify.test.ts src/features/consultations/presentation.test.ts src/features/opportunities/gridify.test.ts src/features/opportunities/match-reason.test.ts src/features/opportunities/opportunity-presentation.test.ts src/features/settings/ai-execution-presentation.test.ts src/features/settings/ai-health.test.ts src/features/settings/country-codes.test.ts src/features/settings/sourcing-schedule.test.ts src/lib/api-client.test.ts src/lib/cpv-catalog.test.ts src/lib/sourcing-source.test.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "format:check": "prettier --check .",

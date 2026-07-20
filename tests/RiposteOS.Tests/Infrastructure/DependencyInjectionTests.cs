@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using RiposteOS.Infrastructure;
+using RiposteOS.Infrastructure.Ai;
 using RiposteOS.Infrastructure.Sourcing;
 
 namespace RiposteOS.Tests.Infrastructure;
@@ -37,6 +38,8 @@ public sealed class DependencyInjectionTests
             source => Assert.IsType<TedSource>(source),
             source => Assert.IsType<PlaceSource>(source));
         Assert.NotNull(scope.ServiceProvider.GetService<SourcingSettingsStore>());
+        Assert.NotNull(scope.ServiceProvider.GetService<AiProviderHealthCheckJob>());
+        Assert.NotNull(scope.ServiceProvider.GetService<AiExecutionPayloadRetentionJob>());
     }
 
     [Theory]
@@ -104,6 +107,40 @@ public sealed class DependencyInjectionTests
             _ = provider.GetRequiredService<IOptions<SourcingSynchronizationOptions>>().Value);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("not-a-cron")]
+    public void InvalidAiProviderHealthCheckCronFailsValidation(string cron)
+    {
+        var services = new ServiceCollection();
+        services.AddInfrastructure(Configuration(new Dictionary<string, string?>
+        {
+            ["AiProviderHealthCheck:Cron"] = cron,
+        }));
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Throws<OptionsValidationException>(() =>
+            _ = provider.GetRequiredService<IOptions<AiProviderHealthCheckOptions>>().Value);
+    }
+
+    [Theory]
+    [InlineData("not-a-cron", "30")]
+    [InlineData("0 3 * * *", "0")]
+    [InlineData("0 3 * * *", "366")]
+    public void InvalidAiExecutionPayloadRetentionOptionsFailValidation(string cron, string retentionDays)
+    {
+        var services = new ServiceCollection();
+        services.AddInfrastructure(Configuration(new Dictionary<string, string?>
+        {
+            ["AiExecutionPayloadRetention:Cron"] = cron,
+            ["AiExecutionPayloadRetention:RetentionDays"] = retentionDays,
+        }));
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Throws<OptionsValidationException>(() =>
+            _ = provider.GetRequiredService<IOptions<AiExecutionPayloadRetentionOptions>>().Value);
+    }
+
     private static IConfiguration Configuration(Dictionary<string, string?>? overrides = null)
     {
         var values = new Dictionary<string, string?>
@@ -121,6 +158,7 @@ public sealed class DependencyInjectionTests
             ["Place:RequestDelayMilliseconds"] = "0",
             ["SourcingSynchronization:Cron"] = "0 * * * *",
             ["SourcingSynchronization:SuccessSlaHours"] = "25",
+            ["AiProviderHealthCheck:Cron"] = "*/5 * * * *",
         };
         if (overrides is not null)
         {

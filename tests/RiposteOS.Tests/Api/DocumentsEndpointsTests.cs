@@ -144,6 +144,7 @@ public sealed class DocumentsEndpointsTests(RiposteWebApplicationFactory factory
     [InlineData("../offre.pdf")]
     [InlineData("offre/2026.pdf")]
     [InlineData("offre\\2026.pdf")]
+    [InlineData("offre\u0001.pdf")]
     public async Task InvalidUploadFileNamesReturn400(string fileName)
     {
         await factory.ResetAsync();
@@ -197,14 +198,16 @@ public sealed class DocumentsEndpointsTests(RiposteWebApplicationFactory factory
         Assert.Equal(HttpStatusCode.UnsupportedMediaType, corruptResponse.StatusCode);
     }
 
-    [Fact]
-    public async Task ValidDocxPackageIsAccepted()
+    [Theory]
+    [InlineData("word/document.xml")]
+    [InlineData("word\\document.xml")]
+    public async Task ValidDocxPackageIsAccepted(string documentEntryName)
     {
         await factory.ResetAsync();
         using var form = CreateForm(
             "offre.docx",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            CreateZip("word/document.xml"));
+            CreateZip(documentEntryName));
 
         using var response = await factory.CreateClient().PostAsync("/api/documents", form);
 

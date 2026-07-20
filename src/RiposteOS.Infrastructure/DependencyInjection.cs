@@ -5,6 +5,7 @@ using Amazon.S3;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Gridify;
+using Cronos;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -17,6 +18,7 @@ using RiposteOS.Infrastructure.Documents;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Infrastructure.Persistence.Configurations;
 using RiposteOS.Infrastructure.Sourcing;
+using RiposteOS.Infrastructure.Ai;
 
 namespace RiposteOS.Infrastructure;
 
@@ -91,6 +93,23 @@ public static class DependencyInjection
         services.AddScoped<DocumentProcessingStore>();
         services.AddScoped<DocumentProcessingJob>();
         services.AddScoped<ConsultationsFacade>();
+        services.AddScoped<AiFacade>();
+        services.AddScoped<IAiChatClientFactory, OpenAiCompatibleChatClientFactory>();
+        services.AddHttpClient<IAiProviderHealthChecker, OpenAiCompatibleProviderHealthChecker>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        }).AddStandardResilienceHandler(options =>
+        {
+            options.Retry.MaxRetryAttempts = 1;
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(20);
+        });
+        services.AddScoped<AiProviderHealthCheckJob>();
+        services.AddScoped<IAiTaskClientResolver, AiTaskClientResolver>();
+        services.AddScoped<AiExecutionRecorder>();
+        services.AddScoped<AiExecutionPayloadRetentionJob>();
+        services.AddScoped<DocumentClassificationStore>();
+        services.AddScoped<DocumentClassificationJob>();
         services.AddOptions<BoampOptions>()
             .Bind(configuration.GetSection(BoampOptions.SectionName))
             .Validate(options => Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out _), "Boamp:BaseUrl must be an absolute URL.")
@@ -152,6 +171,15 @@ public static class DependencyInjection
             .Validate(options => SourcingRecurringJobRegistrar.IsValidCron(options.Cron), "SourcingSynchronization:Cron must be a valid five-field cron expression.")
             .Validate(options => options.SuccessSlaHours is >= 1 and <= 168, "SourcingSynchronization:SuccessSlaHours must be between 1 and 168.")
             .ValidateOnStart();
+        services.AddOptions<AiProviderHealthCheckOptions>()
+            .Bind(configuration.GetSection(AiProviderHealthCheckOptions.SectionName))
+            .Validate(options => !string.IsNullOrWhiteSpace(options.Cron) && options.Cron.Length <= 100 && CronExpression.TryParse(options.Cron, out _), "AiProviderHealthCheck:Cron must be a valid five-field cron expression.")
+            .ValidateOnStart();
+        services.AddOptions<AiExecutionPayloadRetentionOptions>()
+            .Bind(configuration.GetSection(AiExecutionPayloadRetentionOptions.SectionName))
+            .Validate(options => !string.IsNullOrWhiteSpace(options.Cron) && options.Cron.Length <= 100 && CronExpression.TryParse(options.Cron, out _), "AiExecutionPayloadRetention:Cron must be a valid five-field cron expression.")
+            .Validate(options => options.RetentionDays is >= 1 and <= 365, "AiExecutionPayloadRetention:RetentionDays must be between 1 and 365.")
+            .ValidateOnStart();
 
         services.AddHangfire(options => options.UsePostgreSqlStorage(
             storage => storage.UseNpgsqlConnection(connectionString),
@@ -167,6 +195,8 @@ public static class DependencyInjection
     {
         services.AddHangfireServer();
         services.AddHostedService<SourcingRecurringJobRegistrar>();
+        services.AddHostedService<AiProviderHealthCheckRecurringJobRegistrar>();
+        services.AddHostedService<AiExecutionPayloadRetentionRecurringJobRegistrar>();
 
         return services;
     }

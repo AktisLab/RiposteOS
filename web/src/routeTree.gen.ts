@@ -24,6 +24,7 @@ import { Route as errors401RouteImport } from './routes/(errors)/401'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings.index'
 import { Route as AuthenticatedConsultationsIndexRouteImport } from './routes/_authenticated/consultations.index'
 import { Route as AuthenticatedSettingsSourcingRouteImport } from './routes/_authenticated/settings.sourcing'
+import { Route as AuthenticatedSettingsAiRouteImport } from './routes/_authenticated/settings.ai'
 import { Route as AuthenticatedConsultationsConsultationIdRouteImport } from './routes/_authenticated/consultations.$consultationId'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -105,6 +106,11 @@ const AuthenticatedSettingsSourcingRoute =
     path: '/sourcing',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsAiRoute = AuthenticatedSettingsAiRouteImport.update({
+  id: '/ai',
+  path: '/ai',
+  getParentRoute: () => AuthenticatedSettingsRoute,
+} as any)
 const AuthenticatedConsultationsConsultationIdRoute =
   AuthenticatedConsultationsConsultationIdRouteImport.update({
     id: '/$consultationId',
@@ -125,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/responses': typeof AuthenticatedResponsesRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/consultations/$consultationId': typeof AuthenticatedConsultationsConsultationIdRoute
+  '/settings/ai': typeof AuthenticatedSettingsAiRoute
   '/settings/sourcing': typeof AuthenticatedSettingsSourcingRoute
   '/consultations/': typeof AuthenticatedConsultationsIndexRoute
   '/settings/': typeof AuthenticatedSettingsIndexRoute
@@ -140,6 +147,7 @@ export interface FileRoutesByTo {
   '/responses': typeof AuthenticatedResponsesRoute
   '/': typeof AuthenticatedIndexRoute
   '/consultations/$consultationId': typeof AuthenticatedConsultationsConsultationIdRoute
+  '/settings/ai': typeof AuthenticatedSettingsAiRoute
   '/settings/sourcing': typeof AuthenticatedSettingsSourcingRoute
   '/consultations': typeof AuthenticatedConsultationsIndexRoute
   '/settings': typeof AuthenticatedSettingsIndexRoute
@@ -159,6 +167,7 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/consultations/$consultationId': typeof AuthenticatedConsultationsConsultationIdRoute
+  '/_authenticated/settings/ai': typeof AuthenticatedSettingsAiRoute
   '/_authenticated/settings/sourcing': typeof AuthenticatedSettingsSourcingRoute
   '/_authenticated/consultations/': typeof AuthenticatedConsultationsIndexRoute
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
@@ -178,6 +187,7 @@ export interface FileRouteTypes {
     | '/responses'
     | '/settings'
     | '/consultations/$consultationId'
+    | '/settings/ai'
     | '/settings/sourcing'
     | '/consultations/'
     | '/settings/'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/responses'
     | '/'
     | '/consultations/$consultationId'
+    | '/settings/ai'
     | '/settings/sourcing'
     | '/consultations'
     | '/settings'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/'
     | '/_authenticated/consultations/$consultationId'
+    | '/_authenticated/settings/ai'
     | '/_authenticated/settings/sourcing'
     | '/_authenticated/consultations/'
     | '/_authenticated/settings/'
@@ -332,6 +344,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsSourcingRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/ai': {
+      id: '/_authenticated/settings/ai'
+      path: '/ai'
+      fullPath: '/settings/ai'
+      preLoaderRoute: typeof AuthenticatedSettingsAiRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/consultations/$consultationId': {
       id: '/_authenticated/consultations/$consultationId'
       path: '/$consultationId'
@@ -360,11 +379,13 @@ const AuthenticatedConsultationsRouteWithChildren =
   )
 
 interface AuthenticatedSettingsRouteChildren {
+  AuthenticatedSettingsAiRoute: typeof AuthenticatedSettingsAiRoute
   AuthenticatedSettingsSourcingRoute: typeof AuthenticatedSettingsSourcingRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
 }
 
 const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
+  AuthenticatedSettingsAiRoute: AuthenticatedSettingsAiRoute,
   AuthenticatedSettingsSourcingRoute: AuthenticatedSettingsSourcingRoute,
   AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
 }
