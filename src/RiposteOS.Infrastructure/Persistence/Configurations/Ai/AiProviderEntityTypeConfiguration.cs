@@ -15,6 +15,7 @@ public sealed class AiProviderEntityTypeConfiguration : IEntityTypeConfiguration
         builder.Property(x => x.BaseUrl).HasMaxLength(2_000).IsRequired();
         builder.Property(x => x.Model).HasMaxLength(200).IsRequired();
         builder.Property(x => x.ApiKeyEnvironmentVariableName).HasMaxLength(200);
+        builder.Property(x => x.Capabilities).HasConversion<string>().HasMaxLength(64).HasDefaultValue(AiProviderCapabilities.Chat).IsRequired();
         builder.Property(x => x.HealthStatus).HasConversion<string>().HasMaxLength(32).HasDefaultValue(AiProviderHealthStatus.Unknown).IsRequired();
         builder.Property(x => x.HealthCheckedAt);
         builder.Property(x => x.CreatedAt).HasDefaultValueSql(DatabaseFunctions.Now);

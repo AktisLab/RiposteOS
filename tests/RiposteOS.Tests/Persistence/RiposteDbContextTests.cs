@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Pgvector.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using RiposteOS.Core.Consultations;
 using RiposteOS.Core.Sourcing;
@@ -16,7 +17,9 @@ public sealed class RiposteDbContextTests
     {
         using var dbContext = new RiposteDbContext(
             new DbContextOptionsBuilder<RiposteDbContext>()
-                .UseNpgsql("Host=localhost;Database=model_test;Username=test;Password=test")
+                .UseNpgsql(
+                    "Host=localhost;Database=model_test;Username=test;Password=test",
+                    options => options.UseVector())
                 .Options);
 
         var opportunity = AssertEntity<Opportunity>(dbContext.Model, "opportunities", DatabaseSchemas.Sourcing);

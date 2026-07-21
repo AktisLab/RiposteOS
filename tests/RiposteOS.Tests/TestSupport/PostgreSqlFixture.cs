@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using Pgvector.EntityFrameworkCore;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Infrastructure.Persistence.Configurations;
 using Testcontainers.PostgreSql;
@@ -60,7 +61,7 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
         new DbContextOptionsBuilder<RiposteDbContext>()
             .UseNpgsql(
                 connectionString,
-                options => options.MigrationsHistoryTable(
+                options => options.UseVector().MigrationsHistoryTable(
                     "__EFMigrationsHistory",
                     DatabaseSchemas.Infrastructure))
             .Options);

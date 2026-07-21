@@ -9,6 +9,7 @@ using RiposteOS.Core.Documents;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Infrastructure.Consultations;
 using RiposteOS.Infrastructure.Ai;
+using RiposteOS.Infrastructure.Ai.DocumentClassification;
 using RiposteOS.Infrastructure.Documents;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Tests.TestSupport;

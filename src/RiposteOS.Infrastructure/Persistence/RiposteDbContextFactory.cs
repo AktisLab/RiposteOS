@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Pgvector.EntityFrameworkCore;
 using RiposteOS.Infrastructure.Persistence.Configurations;
 
 namespace RiposteOS.Infrastructure.Persistence;
@@ -13,7 +14,7 @@ public sealed class RiposteDbContextFactory : IDesignTimeDbContextFactory<Ripost
         var options = new DbContextOptionsBuilder<RiposteDbContext>()
             .UseNpgsql(
                 connectionString,
-                npgsql => npgsql.MigrationsHistoryTable(
+                npgsql => npgsql.UseVector().MigrationsHistoryTable(
                     "__EFMigrationsHistory",
                     DatabaseSchemas.Infrastructure))
             .Options;

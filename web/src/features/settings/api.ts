@@ -45,6 +45,12 @@ export const updateSourcingSettings = (
 
 export type AiProviderProtocol = 'OpenAiCompatible'
 export type AiProviderHealthStatus = 'Unknown' | 'Available' | 'Unavailable'
+export const aiProviderCapabilities = {
+  chat: 1,
+  embedding: 2,
+  toolCalling: 4,
+  reasoning: 8,
+} as const
 
 export type AiProvider = {
   id: string
@@ -54,6 +60,7 @@ export type AiProvider = {
   model: string
   apiKeyEnvironmentVariableName: string | null
   isEnabled: boolean
+  capabilities: number
   healthStatus: AiProviderHealthStatus
   healthCheckedAt: string | null
   createdAt: string
@@ -66,12 +73,16 @@ export type AiProviderRequest = Omit<
 >
 
 export type AiTaskAssignment = {
-  task: 'DocumentClassification'
+  task: 'DocumentClassification' | 'DocumentEmbedding' | 'ConsultationChat'
   providerId: string
   updatedAt: string
 }
 
-export type AiExecutionOperation = 'DocumentAnalysis' | 'DocumentClassification'
+export type AiExecutionOperation =
+  | 'DocumentAnalysis'
+  | 'DocumentClassification'
+  | 'DocumentEmbedding'
+  | 'ConsultationChat'
 
 export type AiExecutionStatus =
   | 'Running'
@@ -121,6 +132,9 @@ export const documentClassificationAssignmentQueryKey = [
   'DocumentClassification',
 ] as const
 
+export const aiTaskAssignmentQueryKey = (task: AiTaskAssignment['task']) =>
+  ['ai-task-assignment', task] as const
+
 export const aiExecutionLogsQueryKey = (query: AiExecutionLogListQuery) =>
   ['ai-execution-logs', query] as const
 
@@ -162,16 +176,22 @@ export const testAiProviderConnection = (id: string) =>
   })
 
 export const getDocumentClassificationAssignment = () =>
-  apiRequest<AiTaskAssignment>(
-    '/api/settings/ai/tasks/DocumentClassification',
-    {
-      allowNotFound: true,
-      errorMessage: 'Impossible de charger l’affectation de classement.',
-    }
-  )
+  getAiTaskAssignment('DocumentClassification')
+
+export const getAiTaskAssignment = (task: AiTaskAssignment['task']) =>
+  apiRequest<AiTaskAssignment>(`/api/settings/ai/tasks/${task}`, {
+    allowNotFound: true,
+    errorMessage: 'Impossible de charger l’affectation IA.',
+  })
 
 export const assignDocumentClassificationProvider = (providerId: string) =>
-  apiRequest<void>('/api/settings/ai/tasks/DocumentClassification', {
+  assignAiTaskProvider('DocumentClassification', providerId)
+
+export const assignAiTaskProvider = (
+  task: AiTaskAssignment['task'],
+  providerId: string
+) =>
+  apiRequest<void>(`/api/settings/ai/tasks/${task}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ providerId }),

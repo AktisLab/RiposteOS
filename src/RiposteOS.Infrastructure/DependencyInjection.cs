@@ -11,7 +11,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
+using Pgvector.EntityFrameworkCore;
 using RiposteOS.Infrastructure.Consultations;
+using RiposteOS.Infrastructure.Consultations.Assistant;
+using RiposteOS.Infrastructure.Consultations.Knowledge;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Core.Documents;
 using RiposteOS.Infrastructure.Documents;
@@ -19,6 +22,11 @@ using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Infrastructure.Persistence.Configurations;
 using RiposteOS.Infrastructure.Sourcing;
 using RiposteOS.Infrastructure.Ai;
+using RiposteOS.Infrastructure.Ai.DocumentClassification;
+using RiposteOS.Infrastructure.Ai.Execution;
+using RiposteOS.Infrastructure.Ai.Providers;
+using RiposteOS.Infrastructure.Ai.Runtime;
+using RiposteOS.Infrastructure.Ai.Tasks;
 
 namespace RiposteOS.Infrastructure;
 
@@ -33,7 +41,7 @@ public static class DependencyInjection
 
         services.AddDbContext<RiposteDbContext>(options => options.UseNpgsql(
             connectionString,
-            npgsql => npgsql.MigrationsHistoryTable(
+            npgsql => npgsql.UseVector().MigrationsHistoryTable(
                 "__EFMigrationsHistory",
                 DatabaseSchemas.Infrastructure)));
         services
@@ -92,9 +100,15 @@ public static class DependencyInjection
             serviceProvider.GetRequiredService<DoclingDocumentParser>());
         services.AddScoped<DocumentProcessingStore>();
         services.AddScoped<DocumentProcessingJob>();
+        services.AddScoped<DocumentEmbeddingJob>();
         services.AddScoped<ConsultationsFacade>();
+        services.AddScoped<ConsultationRetrievalService>();
+        services.AddScoped<ConsultationKnowledgeFacade>();
+        services.AddScoped<ConsultationAssistantRun>();
+        services.AddScoped<ConsultationAssistantFacade>();
         services.AddScoped<AiFacade>();
         services.AddScoped<IAiChatClientFactory, OpenAiCompatibleChatClientFactory>();
+        services.AddScoped<IAiEmbeddingGeneratorFactory, OpenAiCompatibleEmbeddingGeneratorFactory>();
         services.AddHttpClient<IAiProviderHealthChecker, OpenAiCompatibleProviderHealthChecker>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(10);
@@ -106,7 +120,9 @@ public static class DependencyInjection
         });
         services.AddScoped<AiProviderHealthCheckJob>();
         services.AddScoped<IAiTaskClientResolver, AiTaskClientResolver>();
+        services.AddScoped<IAiEmbeddingTaskResolver, AiEmbeddingTaskResolver>();
         services.AddScoped<AiExecutionRecorder>();
+        services.AddScoped<AiChatClientPipeline>();
         services.AddScoped<AiExecutionPayloadRetentionJob>();
         services.AddScoped<DocumentClassificationStore>();
         services.AddScoped<DocumentClassificationJob>();

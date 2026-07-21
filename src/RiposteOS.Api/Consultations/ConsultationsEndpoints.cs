@@ -206,18 +206,26 @@ public static class ConsultationsEndpoints
                     ConsultationsMapper.ToDocumentResponse(document));
         });
 
-        group.MapGet("/consultations/{consultationId:guid}/documents/{documentId:guid}/analysis/passages", async Task<IResult> (
+        group.MapPost("/consultations/{consultationId:guid}/documents/{documentId:guid}/embedding", async Task<IResult> (
             Guid consultationId,
             Guid documentId,
-            IHostEnvironment environment,
             ConsultationsFacade consultations,
             CancellationToken cancellationToken) =>
         {
-            if (!environment.IsDevelopment())
-            {
-                return TypedResults.NotFound();
-            }
+            var document = await consultations.RetryDocumentEmbeddingAsync(consultationId, documentId, cancellationToken);
+            return document is null
+                ? TypedResults.NotFound()
+                : TypedResults.Accepted(
+                    $"/api/consultations/{consultationId}/documents/{documentId}",
+                    ConsultationsMapper.ToDocumentResponse(document));
+        });
 
+        group.MapGet("/consultations/{consultationId:guid}/documents/{documentId:guid}/analysis/passages", async Task<IResult> (
+            Guid consultationId,
+            Guid documentId,
+            ConsultationsFacade consultations,
+            CancellationToken cancellationToken) =>
+        {
             var passages = await consultations.ListDocumentPassagesAsync(
                 consultationId,
                 documentId,

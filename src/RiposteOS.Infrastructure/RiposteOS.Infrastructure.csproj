@@ -5,6 +5,27 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Update="Ai/Execution/AiExecutionRecorder.Scope.cs">
+      <DependentUpon>AiExecutionRecorder.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Consultations/Assistant/ConsultationAssistantFacade.Contracts.cs">
+      <DependentUpon>ConsultationAssistantFacade.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Consultations/Assistant/ConsultationAssistantRun.Persistence.cs">
+      <DependentUpon>ConsultationAssistantRun.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Consultations/Assistant/ConsultationAssistantRun.Prompt.cs">
+      <DependentUpon>ConsultationAssistantRun.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Consultations/Knowledge/ConsultationKnowledgeFacade.Contracts.cs">
+      <DependentUpon>ConsultationKnowledgeFacade.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Consultations/Knowledge/ConsultationKnowledgeTools.Contracts.cs">
+      <DependentUpon>ConsultationKnowledgeTools.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Consultations/Knowledge/PassageReferenceSet.Contracts.cs">
+      <DependentUpon>PassageReferenceSet.cs</DependentUpon>
+    </Compile>
     <Compile Update="Consultations/ConsultationsFacade.Contracts.cs">
       <DependentUpon>ConsultationsFacade.cs</DependentUpon>
     </Compile>
@@ -50,6 +71,7 @@
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Pgvector.EntityFrameworkCore" />
   </ItemGroup>
 
   <PropertyGroup>

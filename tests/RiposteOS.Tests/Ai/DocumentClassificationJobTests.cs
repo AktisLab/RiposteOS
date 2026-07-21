@@ -6,6 +6,9 @@ using RiposteOS.Core.Ai;
 using RiposteOS.Core.Consultations;
 using RiposteOS.Core.Documents;
 using RiposteOS.Infrastructure.Ai;
+using RiposteOS.Infrastructure.Ai.DocumentClassification;
+using RiposteOS.Infrastructure.Ai.Execution;
+using RiposteOS.Infrastructure.Ai.Tasks;
 using RiposteOS.Infrastructure.Persistence;
 
 namespace RiposteOS.Tests.Ai;
@@ -76,7 +79,7 @@ public sealed class DocumentClassificationJobTests
         var duplicateOrdinalPassage = new DocumentPassage(run.Id, 1, "Conditions financières", 1, "Montants", null);
         dbContext.AddRange(passage, duplicateOrdinalPassage);
         await dbContext.SaveChangesAsync();
-        var client = new ResponseClient("{\"kind\":\"Pricing\",\"confidence\":\"High\",\"evidenceOrdinals\":[2]}");
+        var client = new ResponseClient("{\"kind\":\"Pricing\",\"confidence\":\"High\",\"evidenceReferences\":[\"P2\"]}");
         var logger = new CapturingLogger();
 
         var timeProvider = new FixedTimeProvider(Now.AddMinutes(1));
@@ -148,11 +151,11 @@ public sealed class DocumentClassificationJobTests
     }
 
     [Theory]
-    [InlineData("{\"kind\":\"Unknown\",\"confidence\":\"High\",\"evidenceOrdinals\":[1]}")]
-    [InlineData("{\"kind\":\"Pricing\",\"confidence\":\"Unknown\",\"evidenceOrdinals\":[1]}")]
-    [InlineData("{\"kind\":\"Pricing\",\"confidence\":\"High\",\"evidenceOrdinals\":[]}")]
-    [InlineData("{\"kind\":\"Pricing\",\"confidence\":\"High\",\"evidenceOrdinals\":[1,1,1,1]}")]
-    [InlineData("{\"kind\":\"Pricing\",\"confidence\":\"High\",\"evidenceOrdinals\":[99]}")]
+    [InlineData("{\"kind\":\"Unknown\",\"confidence\":\"High\",\"evidenceReferences\":[\"P1\"]}")]
+    [InlineData("{\"kind\":\"Pricing\",\"confidence\":\"Unknown\",\"evidenceReferences\":[\"P1\"]}")]
+    [InlineData("{\"kind\":\"Pricing\",\"confidence\":\"High\",\"evidenceReferences\":[]}")]
+    [InlineData("{\"kind\":\"Pricing\",\"confidence\":\"High\",\"evidenceReferences\":[\"P1\",\"P1\",\"P1\",\"P1\"]}")]
+    [InlineData("{\"kind\":\"Pricing\",\"confidence\":\"High\",\"evidenceReferences\":[\"P99\"]}")]
     public async Task SemanticallyInvalidProviderResponseIsRecordedAsSafeFailure(string response)
     {
         await using var dbContext = CreateDbContext();

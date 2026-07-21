@@ -6,6 +6,8 @@ export const aiExecutionOperationPresentation: Record<
 > = {
   DocumentAnalysis: 'Analyse documentaire',
   DocumentClassification: 'Classement',
+  DocumentEmbedding: 'Indexation des passages',
+  ConsultationChat: 'Assistant du dossier',
 }
 
 export const aiExecutionStatusPresentation: Record<

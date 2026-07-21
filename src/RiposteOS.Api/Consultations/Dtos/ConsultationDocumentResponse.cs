@@ -11,4 +11,5 @@ public sealed record ConsultationDocumentResponse(
     DateTimeOffset AddedAt,
     string DownloadUrl,
     DocumentAnalysisResponse Analysis,
-    DocumentClassificationResponse Classification);
+    DocumentClassificationResponse Classification,
+    DocumentEmbeddingResponse Embedding);

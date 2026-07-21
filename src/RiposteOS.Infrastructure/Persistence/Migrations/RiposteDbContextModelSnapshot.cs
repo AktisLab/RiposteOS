@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using Pgvector;
 using RiposteOS.Infrastructure.Persistence;
 
 #nullable disable
@@ -326,6 +327,13 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<string>("Capabilities")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasDefaultValue("Chat");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -513,6 +521,117 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                     b.ToTable("consultations", "consultations");
                 });
 
+            modelBuilder.Entity("RiposteOS.Core.Consultations.ConsultationAssistantConversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ConsultationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConsultationId", "ArchivedAt", "UpdatedAt", "Id")
+                        .HasDatabaseName("ix_assistant_conversations_consultation_active_updated_id");
+
+                    b.ToTable("assistant_conversations", "consultations");
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Consultations.ConsultationAssistantMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Content")
+                        .HasMaxLength(16000)
+                        .HasColumnType("character varying(16000)");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("FailedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ProviderName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("StructuredContent")
+                        .HasMaxLength(16000)
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId", "CreatedAt", "Id")
+                        .HasDatabaseName("ix_assistant_messages_conversation_created_id");
+
+                    b.ToTable("assistant_messages", "consultations");
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Consultations.ConsultationAssistantMessageCitation", b =>
+                {
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DocumentPassageId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("MessageId", "DocumentPassageId");
+
+                    b.HasIndex("DocumentPassageId")
+                        .HasDatabaseName("ix_assistant_message_citations_passage_id");
+
+                    b.ToTable("assistant_message_citations", "consultations");
+                });
+
             modelBuilder.Entity("RiposteOS.Core.Consultations.ConsultationDocument", b =>
                 {
                     b.Property<Guid>("ConsultationId")
@@ -584,6 +703,78 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ux_document_passages_run_ordinal");
 
                     b.ToTable("document_passages", "documents");
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Documents.DocumentPassageEmbedding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Dimension")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("DocumentPassageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Vector>("Embedding")
+                        .HasColumnType("vector(1024)");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("FailedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ProviderName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("QueuedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("TextHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentPassageId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_document_passage_embeddings_passage_id");
+
+                    b.HasIndex("Embedding")
+                        .HasDatabaseName("ix_document_passage_embeddings_embedding_cosine");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Embedding"), "hnsw");
+                    NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("Embedding"), new[] { "vector_cosine_ops" });
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_document_passage_embeddings_status");
+
+                    b.ToTable("document_passage_embeddings", "ai");
                 });
 
             modelBuilder.Entity("RiposteOS.Core.Documents.DocumentProcessingRun", b =>
@@ -1245,6 +1436,39 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
+            modelBuilder.Entity("RiposteOS.Core.Consultations.ConsultationAssistantConversation", b =>
+                {
+                    b.HasOne("RiposteOS.Core.Consultations.Consultation", null)
+                        .WithMany()
+                        .HasForeignKey("ConsultationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Consultations.ConsultationAssistantMessage", b =>
+                {
+                    b.HasOne("RiposteOS.Core.Consultations.ConsultationAssistantConversation", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Consultations.ConsultationAssistantMessageCitation", b =>
+                {
+                    b.HasOne("RiposteOS.Core.Documents.DocumentPassage", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentPassageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RiposteOS.Core.Consultations.ConsultationAssistantMessage", null)
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("RiposteOS.Core.Consultations.ConsultationDocument", b =>
                 {
                     b.HasOne("RiposteOS.Core.Consultations.Consultation", null)
@@ -1269,6 +1493,15 @@ namespace RiposteOS.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("DocumentProcessingRun");
+                });
+
+            modelBuilder.Entity("RiposteOS.Core.Documents.DocumentPassageEmbedding", b =>
+                {
+                    b.HasOne("RiposteOS.Core.Documents.DocumentPassage", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentPassageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("RiposteOS.Core.Documents.DocumentProcessingRun", b =>

@@ -43,12 +43,16 @@ import { aiProviderHealthPresentation } from './ai-health'
 import {
   type AiProvider,
   type AiProviderRequest,
+  aiProviderCapabilities,
+  aiTaskAssignmentQueryKey,
+  assignAiTaskProvider,
   aiProvidersQueryKey,
   assignDocumentClassificationProvider,
   createAiProvider,
   deleteAiProvider,
   documentClassificationAssignmentQueryKey,
   getAiProviders,
+  getAiTaskAssignment,
   getDocumentClassificationAssignment,
   testAiProviderConnection,
   updateAiProvider,
@@ -62,6 +66,7 @@ const emptyProvider: AiProviderRequest = {
   model: '',
   apiKeyEnvironmentVariableName: null,
   isEnabled: true,
+  capabilities: 1,
 }
 
 const tabTriggerClassName =
@@ -81,10 +86,24 @@ export function AiSettings() {
     queryKey: documentClassificationAssignmentQueryKey,
     queryFn: getDocumentClassificationAssignment,
   })
+  const embeddingAssignmentQuery = useQuery({
+    queryKey: aiTaskAssignmentQueryKey('DocumentEmbedding'),
+    queryFn: () => getAiTaskAssignment('DocumentEmbedding'),
+  })
+  const chatAssignmentQuery = useQuery({
+    queryKey: aiTaskAssignmentQueryKey('ConsultationChat'),
+    queryFn: () => getAiTaskAssignment('ConsultationChat'),
+  })
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: aiProvidersQueryKey })
     void queryClient.invalidateQueries({
       queryKey: documentClassificationAssignmentQueryKey,
+    })
+    void queryClient.invalidateQueries({
+      queryKey: aiTaskAssignmentQueryKey('DocumentEmbedding'),
+    })
+    void queryClient.invalidateQueries({
+      queryKey: aiTaskAssignmentQueryKey('ConsultationChat'),
     })
   }
   const assignMutation = useMutation({
@@ -94,6 +113,28 @@ export function AiSettings() {
         queryKey: documentClassificationAssignmentQueryKey,
       })
       toast.success('Fournisseur affecté au classement')
+    },
+    onError: (error) => toast.error(error.message),
+  })
+  const assignEmbeddingMutation = useMutation({
+    mutationFn: (providerId: string) =>
+      assignAiTaskProvider('DocumentEmbedding', providerId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: aiTaskAssignmentQueryKey('DocumentEmbedding'),
+      })
+      toast.success('Fournisseur affecté à l’indexation')
+    },
+    onError: (error) => toast.error(error.message),
+  })
+  const assignChatMutation = useMutation({
+    mutationFn: (providerId: string) =>
+      assignAiTaskProvider('ConsultationChat', providerId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: aiTaskAssignmentQueryKey('ConsultationChat'),
+      })
+      toast.success('Fournisseur affecté à l’assistant')
     },
     onError: (error) => toast.error(error.message),
   })
@@ -136,25 +177,60 @@ export function AiSettings() {
         </TabsList>
 
         <TabsContent value='configuration' className='m-0 py-6 md:py-8'>
-          {providersQuery.isPending || assignmentQuery.isPending ? (
+          {providersQuery.isPending ||
+          assignmentQuery.isPending ||
+          embeddingAssignmentQuery.isPending ||
+          chatAssignmentQuery.isPending ? (
             <StateMessage
               icon={<Loader2 className='animate-spin' />}
               role='status'
             >
               Chargement de la configuration IA…
             </StateMessage>
-          ) : providersQuery.isError || assignmentQuery.isError ? (
+          ) : providersQuery.isError ||
+            assignmentQuery.isError ||
+            embeddingAssignmentQuery.isError ||
+            chatAssignmentQuery.isError ? (
             <StateMessage icon={<Bot />} role='alert'>
-              {providersQuery.error?.message ?? assignmentQuery.error?.message}
+              {providersQuery.error?.message ??
+                assignmentQuery.error?.message ??
+                embeddingAssignmentQuery.error?.message ??
+                chatAssignmentQuery.error?.message}
             </StateMessage>
           ) : (
             <div className='space-y-10'>
-              <ClassificationConfiguration
-                providers={providersQuery.data}
-                providerId={assignmentQuery.data?.providerId ?? null}
-                isSaving={assignMutation.isPending}
-                onSelect={assignMutation.mutate}
-              />
+              <section
+                aria-label='Affectation des modèles aux automatisations'
+                className='divide-y border-y'
+              >
+                <ClassificationConfiguration
+                  providers={providersQuery.data}
+                  providerId={assignmentQuery.data?.providerId ?? null}
+                  isSaving={assignMutation.isPending}
+                  onSelect={assignMutation.mutate}
+                />
+                <TaskConfiguration
+                  id='embedding-provider'
+                  title='Indexation des passages'
+                  providerId={embeddingAssignmentQuery.data?.providerId ?? null}
+                  providers={providersQuery.data}
+                  capability={aiProviderCapabilities.embedding}
+                  isSaving={assignEmbeddingMutation.isPending}
+                  onSelect={assignEmbeddingMutation.mutate}
+                />
+                <TaskConfiguration
+                  id='consultation-chat-provider'
+                  title='Assistant du dossier'
+                  providerId={chatAssignmentQuery.data?.providerId ?? null}
+                  providers={providersQuery.data}
+                  capability={
+                    aiProviderCapabilities.chat |
+                    aiProviderCapabilities.toolCalling
+                  }
+                  isSaving={assignChatMutation.isPending}
+                  onSelect={assignChatMutation.mutate}
+                />
+              </section>
 
               <section aria-labelledby='ai-providers'>
                 <div className='flex flex-col justify-between gap-4 sm:flex-row sm:items-center'>
@@ -230,29 +306,59 @@ function ClassificationConfiguration({
   onSelect: (providerId: string) => void
 }) {
   return (
-    <section
-      aria-labelledby='classification-provider'
-      className='grid gap-4 border-b py-5 sm:grid-cols-[minmax(0,1fr)_20rem] sm:items-center'
+    <TaskConfiguration
+      id='classification-provider'
+      title='Classement des documents'
+      providers={providers}
+      providerId={providerId}
+      capability={aiProviderCapabilities.chat}
+      isSaving={isSaving}
+      onSelect={onSelect}
+    />
+  )
+}
+
+function TaskConfiguration({
+  id,
+  title,
+  providers,
+  providerId,
+  capability,
+  isSaving,
+  onSelect,
+}: {
+  id: string
+  title: string
+  providers: AiProvider[]
+  providerId: string | null
+  capability: number
+  isSaving: boolean
+  onSelect: (providerId: string) => void
+}) {
+  const compatibleProviders = providers.filter(
+    (provider) => (provider.capabilities & capability) === capability
+  )
+  return (
+    <div
+      aria-labelledby={id}
+      className='grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-center'
     >
-      <h2
-        id='classification-provider'
-        className='text-base font-semibold tracking-tight'
-      >
-        Classement des documents
-      </h2>
+      <p id={id} className='text-sm font-medium'>
+        {title}
+      </p>
       <Select
         value={providerId ?? ''}
         onValueChange={onSelect}
-        disabled={isSaving || providers.length === 0}
+        disabled={isSaving || compatibleProviders.length === 0}
       >
         <SelectTrigger
-          aria-label='Modèle de classement'
-          className='w-full bg-muted/30 sm:w-80'
+          aria-label={`Modèle pour ${title}`}
+          className='w-full bg-muted/30'
         >
           <SelectValue placeholder='Choisir un modèle' />
         </SelectTrigger>
         <SelectContent>
-          {providers.map((provider) => (
+          {compatibleProviders.map((provider) => (
             <SelectItem
               key={provider.id}
               value={provider.id}
@@ -263,7 +369,7 @@ function ClassificationConfiguration({
           ))}
         </SelectContent>
       </Select>
-    </section>
+    </div>
   )
 }
 
@@ -402,6 +508,7 @@ function ProviderDialog({
     model: provider.model,
     apiKeyEnvironmentVariableName: provider.apiKeyEnvironmentVariableName,
     isEnabled: provider.isEnabled,
+    capabilities: provider.capabilities,
   })
   const updateMutation = useMutation({
     mutationFn: () => updateAiProvider(provider.id, value),
@@ -582,6 +689,73 @@ function ProviderFields({
           onCheckedChange={(checked) => update('isEnabled', checked)}
         />
         <Label htmlFor={`${idPrefix}-enabled`}>Connexion active</Label>
+      </div>
+      <div className='space-y-2 sm:col-span-2'>
+        <p className='text-sm font-medium'>Capacités</p>
+        <div className='flex flex-wrap gap-5'>
+          <div className='flex items-center gap-2'>
+            <Switch
+              id={`${idPrefix}-chat`}
+              checked={(value.capabilities & 1) !== 0}
+              onCheckedChange={(checked) =>
+                update(
+                  'capabilities',
+                  checked ? value.capabilities | 1 : value.capabilities & ~1
+                )
+              }
+            />
+            <Label htmlFor={`${idPrefix}-chat`}>Conversation</Label>
+          </div>
+          <div className='flex items-center gap-2'>
+            <Switch
+              id={`${idPrefix}-embedding`}
+              checked={(value.capabilities & 2) !== 0}
+              onCheckedChange={(checked) =>
+                update(
+                  'capabilities',
+                  checked ? value.capabilities | 2 : value.capabilities & ~2
+                )
+              }
+            />
+            <Label htmlFor={`${idPrefix}-embedding`}>Embeddings</Label>
+          </div>
+          <div className='flex items-center gap-2'>
+            <Switch
+              id={`${idPrefix}-tool-calling`}
+              checked={(value.capabilities & 4) !== 0}
+              onCheckedChange={(checked) =>
+                update(
+                  'capabilities',
+                  checked ? value.capabilities | 4 : value.capabilities & ~4
+                )
+              }
+            />
+            <Label htmlFor={`${idPrefix}-tool-calling`}>
+              Outils de recherche
+            </Label>
+          </div>
+          <div className='flex items-center gap-2'>
+            <Switch
+              id={`${idPrefix}-reasoning`}
+              checked={
+                (value.capabilities & aiProviderCapabilities.reasoning) !== 0
+              }
+              onCheckedChange={(checked) =>
+                update(
+                  'capabilities',
+                  checked
+                    ? value.capabilities | aiProviderCapabilities.reasoning
+                    : value.capabilities & ~aiProviderCapabilities.reasoning
+                )
+              }
+            />
+            <Label htmlFor={`${idPrefix}-reasoning`}>Raisonnement</Label>
+          </div>
+        </div>
+        <p className='text-xs text-muted-foreground'>
+          Activez le raisonnement uniquement si le serveur prend en charge l’API
+          Responses et les résumés de raisonnement.
+        </p>
       </div>
     </>
   )

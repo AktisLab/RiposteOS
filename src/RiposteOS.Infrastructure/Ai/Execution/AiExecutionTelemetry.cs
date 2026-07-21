@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using RiposteOS.Core.Ai;
 
-namespace RiposteOS.Infrastructure.Ai;
+namespace RiposteOS.Infrastructure.Ai.Execution;
 
 public static class AiExecutionTelemetry
 {

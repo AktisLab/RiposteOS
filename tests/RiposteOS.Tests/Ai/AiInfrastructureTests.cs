@@ -1,6 +1,15 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging.Abstractions;
 using RiposteOS.Core.Ai;
 using RiposteOS.Infrastructure.Ai;
+using RiposteOS.Infrastructure.Ai.DocumentClassification;
+using RiposteOS.Infrastructure.Ai.Execution;
+using RiposteOS.Infrastructure.Ai.Providers;
+using RiposteOS.Infrastructure.Ai.Runtime;
+using RiposteOS.Infrastructure.Ai.Tasks;
 using RiposteOS.Infrastructure.Persistence;
 
 namespace RiposteOS.Tests.Ai;
@@ -52,6 +61,37 @@ public sealed class AiInfrastructureTests
         enabled.Update(enabled.Name, enabled.Protocol, enabled.BaseUrl, enabled.Model, null, false, Now.AddMinutes(1));
         await dbContext.SaveChangesAsync();
         Assert.Null(await resolver.ResolveAsync(AiTask.DocumentClassification, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AssignmentRequiresTheProviderCapabilityForTheTask()
+    {
+        await using var dbContext = CreateDbContext();
+        var facade = new AiFacade(dbContext, new FixedHealthChecker(AiProviderHealthStatus.Available), new FixedTimeProvider(Now));
+        var chat = await facade.CreateProviderAsync("Chat", AiProviderProtocol.OpenAiCompatible, "https://chat.example.test/v1", "gpt", null, true, AiProviderCapabilities.Chat | AiProviderCapabilities.ToolCalling, CancellationToken.None);
+        var embedding = await facade.CreateProviderAsync("Embedding", AiProviderProtocol.OpenAiCompatible, "https://embedding.example.test/v1", "qwen", null, true, AiProviderCapabilities.Embedding, CancellationToken.None);
+
+        Assert.False(await facade.AssignAsync(AiTask.DocumentEmbedding, chat.Id, CancellationToken.None));
+        Assert.False(await facade.AssignAsync(AiTask.ConsultationChat, embedding.Id, CancellationToken.None));
+        Assert.True(await facade.AssignAsync(AiTask.DocumentEmbedding, embedding.Id, CancellationToken.None));
+        Assert.True(await facade.AssignAsync(AiTask.ConsultationChat, chat.Id, CancellationToken.None));
+        Assert.Null(await new AiTaskClientResolver(dbContext, new NullFactory()).ResolveAsync(AiTask.DocumentEmbedding, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task EmbeddingResolverReturnsOnlyAnEnabledEmbeddingAssignment()
+    {
+        await using var dbContext = CreateDbContext();
+        var embedding = new AiProvider(Guid.NewGuid(), "Embedding", AiProviderProtocol.OpenAiCompatible, "https://embedding.example.test/v1", "qwen", null, true, Now, Now, AiProviderCapabilities.Embedding);
+        var chat = new AiProvider(Guid.NewGuid(), "Chat", AiProviderProtocol.OpenAiCompatible, "https://chat.example.test/v1", "gpt", null, true, Now, Now, AiProviderCapabilities.Chat);
+        dbContext.AddRange(embedding, chat, new AiTaskAssignment(AiTask.DocumentEmbedding, embedding.Id, Now));
+        await dbContext.SaveChangesAsync();
+        var resolver = new AiEmbeddingTaskResolver(dbContext, new NullEmbeddingFactory());
+
+        Assert.Equal(embedding.Id, (await resolver.ResolveAsync(CancellationToken.None))?.ProviderId);
+        embedding.Update(embedding.Name, embedding.Protocol, embedding.BaseUrl, embedding.Model, null, false, Now.AddMinutes(1), AiProviderCapabilities.Embedding);
+        await dbContext.SaveChangesAsync();
+        Assert.Null(await resolver.ResolveAsync(CancellationToken.None));
     }
 
     [Fact]
@@ -160,9 +200,111 @@ public sealed class AiInfrastructureTests
     }
 
     [Fact]
+    public async Task ExecutionScopeRecordsPayloadAndCompletesTheExecution()
+    {
+        await using var dbContext = CreateDbContext();
+        var recorder = new AiExecutionRecorder(dbContext, new FixedTimeProvider(Now));
+        using var execution = await recorder.StartScopeAsync(
+            new AiExecutionStart(
+                AiExecutionOperation.DocumentClassification,
+                new AiExecutionSubject(AiExecutionSubjectKind.Document, Guid.NewGuid(), "ccap.docx"),
+                Guid.NewGuid(),
+                "Local",
+                "model",
+                Guid.NewGuid()),
+            CancellationToken.None);
+
+        await execution.RecordInputAsync("{\"input\":true}", CancellationToken.None);
+        await execution.RecordOutputAsync("{\"output\":true}", CancellationToken.None);
+        await execution.CompleteAsync(CancellationToken.None);
+
+        var stored = await dbContext.Set<AiExecutionLog>().SingleAsync();
+        var payload = await dbContext.Set<AiExecutionPayload>().SingleAsync();
+        Assert.Equal(execution.Id, stored.Id);
+        Assert.Equal(AiExecutionStatus.Completed, stored.Status);
+        Assert.Equal("{\"input\":true}", payload.Input);
+        Assert.Equal("{\"output\":true}", payload.Output);
+    }
+
+    [Fact]
+    public async Task ExecutionScopeEmitsOperationAndProviderTelemetryWithoutSensitiveContent()
+    {
+        await using var dbContext = CreateDbContext();
+        var recorder = new AiExecutionRecorder(dbContext, new FixedTimeProvider(Now));
+        var stoppedActivities = new ConcurrentQueue<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == AiExecutionTelemetry.SourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = stoppedActivities.Enqueue,
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        foreach (var operation in new[]
+                 {
+                     AiExecutionOperation.DocumentAnalysis,
+                     AiExecutionOperation.DocumentEmbedding,
+                     AiExecutionOperation.ConsultationChat,
+                 })
+        {
+            using var execution = await recorder.StartScopeAsync(
+                new AiExecutionStart(
+                    operation,
+                    new AiExecutionSubject(AiExecutionSubjectKind.Document, Guid.NewGuid(), operation.ToString()),
+                    Guid.NewGuid(),
+                    "Local",
+                    "model",
+                    Guid.NewGuid()),
+                CancellationToken.None);
+            if (operation == AiExecutionOperation.ConsultationChat)
+            {
+                await execution.FailAsync("Non configuré", true, CancellationToken.None);
+            }
+            else
+            {
+                await execution.CompleteAsync(CancellationToken.None);
+            }
+        }
+
+        var activities = stoppedActivities.ToArray();
+        Assert.Equal(3, activities.Length);
+        Assert.Equal(["document_processing", "embeddings", "chat"], activities.Select(activity => activity.GetTagItem("gen_ai.operation.name")));
+        Assert.All(activities, activity =>
+        {
+            Assert.Equal("Local", activity.GetTagItem("gen_ai.provider.name"));
+            Assert.Equal("model", activity.GetTagItem("gen_ai.request.model"));
+            Assert.DoesNotContain(activity.Tags, tag => tag.Value?.Contains("Non configuré", StringComparison.Ordinal) == true);
+        });
+    }
+
+    [Fact]
     public void OpenAiCompatibleFactoryRejectsUnsupportedProtocolAndMissingConfiguredSecret()
     {
         var factory = new OpenAiCompatibleChatClientFactory();
+        var provider = Provider(isEnabled: true, apiKeyEnvironmentVariableName: "RIPOSTEOS_TEST_MISSING_KEY");
+
+        Assert.Throws<InvalidOperationException>(() => factory.Create(provider));
+        Assert.Throws<NotSupportedException>(() => factory.Create(new AiProvider(Guid.NewGuid(), "name", (AiProviderProtocol)99, "https://example.test", "model", null, true, Now, Now)));
+        Assert.NotNull(factory.Create(Provider(isEnabled: true)));
+        Assert.NotNull(factory.Create(Provider(isEnabled: true, capabilities: AiProviderCapabilities.Chat | AiProviderCapabilities.Reasoning)));
+    }
+
+    [Fact]
+    public void ChatPipelineBuildsOfficialDecoratorsAndValidatesIterationLimit()
+    {
+        using var client = new OpenAiCompatibleChatClientFactory().Create(Provider(isEnabled: true));
+        var pipeline = new AiChatClientPipeline(NullLoggerFactory.Instance);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => pipeline.CreateForTools(client, 0));
+        using var decorated = pipeline.CreateForTools(client, 2);
+
+        Assert.NotNull(decorated);
+    }
+
+    [Fact]
+    public void OpenAiCompatibleEmbeddingFactoryRejectsUnsupportedProtocolAndMissingConfiguredSecret()
+    {
+        var factory = new OpenAiCompatibleEmbeddingGeneratorFactory();
         var provider = Provider(isEnabled: true, apiKeyEnvironmentVariableName: "RIPOSTEOS_TEST_MISSING_KEY");
 
         Assert.Throws<InvalidOperationException>(() => factory.Create(provider));
@@ -205,8 +347,11 @@ public sealed class AiInfrastructureTests
             facade.RefreshEnabledProviderHealthAsync(new CancellationToken(canceled: true)));
     }
 
-    private static AiProvider Provider(bool isEnabled, string? apiKeyEnvironmentVariableName = null) =>
-        new(Guid.NewGuid(), "provider", AiProviderProtocol.OpenAiCompatible, "https://example.test/v1", "model", apiKeyEnvironmentVariableName, isEnabled, Now, Now);
+    private static AiProvider Provider(
+        bool isEnabled,
+        string? apiKeyEnvironmentVariableName = null,
+        AiProviderCapabilities capabilities = AiProviderCapabilities.Chat) =>
+        new(Guid.NewGuid(), "provider", AiProviderProtocol.OpenAiCompatible, "https://example.test/v1", "model", apiKeyEnvironmentVariableName, isEnabled, Now, Now, capabilities);
 
     private static RiposteDbContext CreateDbContext() => new(new DbContextOptionsBuilder<RiposteDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -220,6 +365,11 @@ public sealed class AiInfrastructureTests
     private sealed class NullFactory : IAiChatClientFactory
     {
         public Microsoft.Extensions.AI.IChatClient Create(AiProvider provider) => null!;
+    }
+
+    private sealed class NullEmbeddingFactory : IAiEmbeddingGeneratorFactory
+    {
+        public IEmbeddingGenerator<string, Embedding<float>> Create(AiProvider provider) => null!;
     }
 
     private sealed class FixedHealthChecker(AiProviderHealthStatus status) : IAiProviderHealthChecker

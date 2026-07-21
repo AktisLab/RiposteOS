@@ -3,6 +3,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RiposteOS.Core.Documents;
 using RiposteOS.Infrastructure.Documents;
 using RiposteOS.Infrastructure.Ai;
+using RiposteOS.Infrastructure.Ai.DocumentClassification;
+using RiposteOS.Infrastructure.Ai.Execution;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Tests.TestSupport;
 

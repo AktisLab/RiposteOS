@@ -18,13 +18,13 @@ public static class AiEndpoints
         group.MapPost("/providers", async Task<IResult> (AiProviderRequest request, AiFacade facade, CancellationToken ct) =>
         {
             if (!TryParse(request, out var protocol)) return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["provider"] = ["La configuration IA est invalide."] });
-            var provider = await facade.CreateProviderAsync(request.Name, protocol, request.BaseUrl, request.Model, request.ApiKeyEnvironmentVariableName, request.IsEnabled, ct);
+            var provider = await facade.CreateProviderAsync(request.Name, protocol, request.BaseUrl, request.Model, request.ApiKeyEnvironmentVariableName, request.IsEnabled, request.Capabilities, ct);
             return TypedResults.Created($"/api/settings/ai/providers/{provider.Id}", ToResponse(provider));
         });
         group.MapPut("/providers/{id:guid}", async Task<IResult> (Guid id, AiProviderRequest request, AiFacade facade, CancellationToken ct) =>
         {
             if (!TryParse(request, out var protocol)) return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["provider"] = ["La configuration IA est invalide."] });
-            try { var provider = await facade.UpdateProviderAsync(id, request.Name, protocol, request.BaseUrl, request.Model, request.ApiKeyEnvironmentVariableName, request.IsEnabled, ct); return provider is null ? TypedResults.NotFound() : TypedResults.Ok(ToResponse(provider)); }
+            try { var provider = await facade.UpdateProviderAsync(id, request.Name, protocol, request.BaseUrl, request.Model, request.ApiKeyEnvironmentVariableName, request.IsEnabled, request.Capabilities, ct); return provider is null ? TypedResults.NotFound() : TypedResults.Ok(ToResponse(provider)); }
             catch (ArgumentException) { return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["provider"] = ["La configuration IA est invalide."] }); }
         });
         group.MapDelete("/providers/{id:guid}", async Task<IResult> (Guid id, AiFacade facade, CancellationToken ct) => await facade.DeleteProviderAsync(id, ct) ? TypedResults.NoContent() : TypedResults.Conflict());
@@ -101,10 +101,10 @@ public static class AiEndpoints
         return errors;
     }
 
-    private static bool TryParse(AiProviderRequest request, out AiProviderProtocol protocol) => Enum.TryParse(request.Protocol, true, out protocol) && Enum.IsDefined(protocol);
-    private static AiProviderResponse ToResponse(AiProvider provider) => new(provider.Id, provider.Name, provider.Protocol.ToString(), provider.BaseUrl, provider.Model, provider.ApiKeyEnvironmentVariableName, provider.IsEnabled, provider.HealthStatus.ToString(), provider.HealthCheckedAt, provider.CreatedAt, provider.UpdatedAt);
+    private static bool TryParse(AiProviderRequest request, out AiProviderProtocol protocol) => Enum.TryParse(request.Protocol, true, out protocol) && Enum.IsDefined(protocol) && request.Capabilities is not AiProviderCapabilities.None && (request.Capabilities & ~(AiProviderCapabilities.Chat | AiProviderCapabilities.Embedding | AiProviderCapabilities.ToolCalling | AiProviderCapabilities.Reasoning)) == 0;
+    private static AiProviderResponse ToResponse(AiProvider provider) => new(provider.Id, provider.Name, provider.Protocol.ToString(), provider.BaseUrl, provider.Model, provider.ApiKeyEnvironmentVariableName, provider.IsEnabled, provider.Capabilities, provider.HealthStatus.ToString(), provider.HealthCheckedAt, provider.CreatedAt, provider.UpdatedAt);
 }
-public sealed record AiProviderRequest(string Name, string Protocol, string BaseUrl, string Model, string? ApiKeyEnvironmentVariableName, bool IsEnabled);
-public sealed record AiProviderResponse(Guid Id, string Name, string Protocol, string BaseUrl, string Model, string? ApiKeyEnvironmentVariableName, bool IsEnabled, string HealthStatus, DateTimeOffset? HealthCheckedAt, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+public sealed record AiProviderRequest(string Name, string Protocol, string BaseUrl, string Model, string? ApiKeyEnvironmentVariableName, bool IsEnabled, AiProviderCapabilities Capabilities = AiProviderCapabilities.Chat);
+public sealed record AiProviderResponse(Guid Id, string Name, string Protocol, string BaseUrl, string Model, string? ApiKeyEnvironmentVariableName, bool IsEnabled, AiProviderCapabilities Capabilities, string HealthStatus, DateTimeOffset? HealthCheckedAt, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 public sealed record AiTaskAssignmentRequest(Guid ProviderId);
 public sealed record AiTaskAssignmentResponse(string Task, Guid ProviderId, DateTimeOffset UpdatedAt);

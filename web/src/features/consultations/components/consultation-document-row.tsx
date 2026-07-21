@@ -32,6 +32,7 @@ import {
   detachConsultationDocument,
   requestDocumentAnalysis,
   retryDocumentClassification,
+  retryDocumentEmbedding,
   updateConsultationDocumentKind,
 } from '../api'
 import {
@@ -95,19 +96,31 @@ export function ConsultationDocumentRow({
     },
     onError: (error) => toast.error(error.message),
   })
+  const embeddingMutation = useMutation({
+    mutationFn: () => retryDocumentEmbedding(consultationId, document.id),
+    onSuccess: () => {
+      invalidate(false)
+      toast.success('Indexation du document mise en file')
+    },
+    onError: (error) => toast.error(error.message),
+  })
   const pending =
     categoryMutation.isPending ||
     detachMutation.isPending ||
     analysisMutation.isPending ||
-    classificationMutation.isPending
+    classificationMutation.isPending ||
+    embeddingMutation.isPending
   const processing = getDocumentProcessingPresentation(
     document.analysis,
-    document.classification
+    document.classification,
+    document.embedding
   )
   const retryMutation =
     processing.retryTarget === 'classification'
       ? classificationMutation
-      : analysisMutation
+      : processing.retryTarget === 'embedding'
+        ? embeddingMutation
+        : analysisMutation
 
   return (
     <TableRow>

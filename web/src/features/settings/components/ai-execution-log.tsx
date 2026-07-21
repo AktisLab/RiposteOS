@@ -101,6 +101,12 @@ export function AiExecutionLog() {
                 Analyse documentaire
               </SelectItem>
               <SelectItem value='DocumentClassification'>Classement</SelectItem>
+              <SelectItem value='DocumentEmbedding'>
+                Indexation des passages
+              </SelectItem>
+              <SelectItem value='ConsultationChat'>
+                Assistant du dossier
+              </SelectItem>
             </SelectContent>
           </Select>
           <Select

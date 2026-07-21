@@ -56,7 +56,8 @@ public sealed record ConsultationDocumentResult(
     ConsultationDocumentKindOrigin KindOrigin,
     DateTimeOffset AddedAt,
     DocumentAnalysisResult Analysis,
-    DocumentClassificationResult Classification);
+    DocumentClassificationResult Classification,
+    DocumentEmbeddingResult Embedding);
 
 public sealed record DocumentAnalysisResult(
     string Status,
@@ -78,6 +79,12 @@ public sealed record DocumentClassificationResult(
     DateTimeOffset? FailedAt,
     string? ProviderName,
     string? Model,
+    string? ErrorMessage);
+
+public sealed record DocumentEmbeddingResult(
+    string Status,
+    int IndexedPassageCount,
+    int PassageCount,
     string? ErrorMessage);
 
 public sealed record DocumentPassageResult(

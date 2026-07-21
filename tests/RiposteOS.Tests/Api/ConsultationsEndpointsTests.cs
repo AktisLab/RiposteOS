@@ -7,6 +7,8 @@ using RiposteOS.Api.Sourcing.Dtos;
 using RiposteOS.Core.Consultations;
 using RiposteOS.Core.Documents;
 using RiposteOS.Core.Sourcing;
+using RiposteOS.Infrastructure.Consultations;
+using RiposteOS.Infrastructure.Consultations.Assistant;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Tests.TestSupport;
 
@@ -459,6 +461,123 @@ public sealed class ConsultationsEndpointsTests(RiposteWebApplicationFactory fac
         Assert.Equal("NotStarted", manualDocument!.Classification.Status);
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
         Assert.NotNull(factory.Jobs.CreatedJob);
+    }
+
+    [Fact]
+    public async Task FailedDocumentEmbeddingIsExposedAndCanBeExplicitlyRetried()
+    {
+        await factory.ResetAsync();
+        var consultation = new Consultation("Logiciel métier", "Acheteur", null, null, Now);
+        var storedDocument = CreateStoredDocument();
+        var run = new DocumentProcessingRun(storedDocument.Id, Now);
+        await SeedAsync(consultation, storedDocument, run);
+        await SeedAsync(new ConsultationDocument(
+            consultation.Id,
+            storedDocument.Id,
+            ConsultationDocumentKind.FullDce,
+            Now));
+        run.TryStart(Now.AddMinutes(1));
+        run.Complete(1, 1, Now.AddMinutes(2));
+        var passage = new DocumentPassage(run.Id, 1, "Date limite", 1, null, null);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<RiposteDbContext>();
+            dbContext.Update(run);
+            dbContext.Add(passage);
+            await dbContext.SaveChangesAsync();
+            var embedding = new DocumentPassageEmbedding(
+                passage.Id,
+                new string('b', 64),
+                "Embedding",
+                "qwen",
+                Now);
+            embedding.Fail("L'indexation IA n'est pas configurée.", Now);
+            dbContext.Add(embedding);
+            await dbContext.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        var documents = await client.GetFromJsonAsync<ConsultationDocumentResponse[]>(
+            $"/api/consultations/{consultation.Id}/documents");
+        using var retry = await client.PostAsync(
+            $"/api/consultations/{consultation.Id}/documents/{storedDocument.Id}/embedding",
+            null);
+        var retried = await retry.Content.ReadFromJsonAsync<ConsultationDocumentResponse>();
+
+        var document = Assert.Single(documents!);
+        Assert.Equal("Failed", document.Embedding.Status);
+        Assert.Equal("L'indexation IA n'est pas configurée.", document.Embedding.ErrorMessage);
+        Assert.Equal(HttpStatusCode.Accepted, retry.StatusCode);
+        Assert.Equal("Failed", retried!.Embedding.Status);
+        Assert.NotNull(factory.Jobs.CreatedJob);
+    }
+
+    [Fact]
+    public async Task AssistantConversationEndpointsPersistTheScopedConversationAndStreamFailures()
+    {
+        await factory.ResetAsync();
+        var consultation = new Consultation("Logiciel métier", "Acheteur", null, null, Now);
+        await SeedAsync(consultation);
+        var client = factory.CreateClient();
+
+        using var missingList = await client.GetAsync($"/api/consultations/{Guid.NewGuid()}/assistant/conversations");
+        using var missingCreate = await client.PostAsJsonAsync(
+            $"/api/consultations/{Guid.NewGuid()}/assistant/conversations",
+            new CreateAssistantConversationRequest("Nouvelle"));
+        using var createdResponse = await client.PostAsJsonAsync(
+            $"/api/consultations/{consultation.Id}/assistant/conversations",
+            new CreateAssistantConversationRequest("  Discussion  "));
+        var created = await createdResponse.Content.ReadFromJsonAsync<ConsultationAssistantConversationSummary>();
+        using var list = await client.GetAsync($"/api/consultations/{consultation.Id}/assistant/conversations");
+        var conversations = await list.Content.ReadFromJsonAsync<ConsultationAssistantConversationSummary[]>();
+        using var missingDetails = await client.GetAsync($"/api/consultations/{consultation.Id}/assistant/conversations/{Guid.NewGuid()}");
+        using var details = await client.GetAsync($"/api/consultations/{consultation.Id}/assistant/conversations/{created!.Id}");
+        using var renamed = await client.PatchAsJsonAsync(
+            $"/api/consultations/{consultation.Id}/assistant/conversations/{created.Id}",
+            new UpdateAssistantConversationRequest("Renommée"));
+        using var invalidRename = await client.PatchAsJsonAsync(
+            $"/api/consultations/{consultation.Id}/assistant/conversations/{created.Id}",
+            new UpdateAssistantConversationRequest(" "));
+        using var message = await client.PostAsJsonAsync(
+            $"/api/consultations/{consultation.Id}/assistant/conversations/{created.Id}/messages",
+            new CreateAssistantMessageRequest("Question"));
+        var stream = await message.Content.ReadAsStringAsync();
+        var afterMessage = await client.GetFromJsonAsync<ConsultationAssistantConversationDetails>(
+            $"/api/consultations/{consultation.Id}/assistant/conversations/{created.Id}");
+        var userMessageId = afterMessage!.Messages.Single(item => item.Role == ConsultationAssistantMessageRole.User).Id;
+        using var retry = await client.PostAsync(
+            $"/api/consultations/{consultation.Id}/assistant/conversations/{created.Id}/messages/{userMessageId}/retry",
+            null);
+        var retryStream = await retry.Content.ReadAsStringAsync();
+        using var archived = await client.PostAsync(
+            $"/api/consultations/{consultation.Id}/assistant/conversations/{created.Id}/archive",
+            null);
+        using var repeatedArchive = await client.PostAsync(
+            $"/api/consultations/{consultation.Id}/assistant/conversations/{created.Id}/archive",
+            null);
+        using var missingArchive = await client.PostAsync(
+            $"/api/consultations/{consultation.Id}/assistant/conversations/{Guid.NewGuid()}/archive",
+            null);
+
+        Assert.Equal(HttpStatusCode.NotFound, missingList.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, missingCreate.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, createdResponse.StatusCode);
+        Assert.Equal("Discussion", created!.Title);
+        Assert.Equal(created.Id, Assert.Single(conversations!).Id);
+        Assert.Equal(HttpStatusCode.NotFound, missingDetails.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, details.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, renamed.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidRename.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, message.StatusCode);
+        Assert.Contains("event: message_started", stream, StringComparison.Ordinal);
+        Assert.Contains("event: message_failed", stream, StringComparison.Ordinal);
+        Assert.Contains("\"type\":\"message_started\"", stream, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Type\":", stream, StringComparison.Ordinal);
+        Assert.Contains("event: message_started", retryStream, StringComparison.Ordinal);
+        Assert.Contains("event: message_failed", retryStream, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.NoContent, archived.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, repeatedArchive.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, missingArchive.StatusCode);
     }
 
     [Fact]

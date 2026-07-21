@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +6,8 @@ using RiposteOS.Core.Ai;
 using RiposteOS.Core.Consultations;
 using RiposteOS.Core.Documents;
 using RiposteOS.Infrastructure.Ai;
+using RiposteOS.Infrastructure.Ai.DocumentClassification;
+using RiposteOS.Infrastructure.Ai.Execution;
 using RiposteOS.Infrastructure.Persistence;
 
 namespace RiposteOS.Infrastructure.Documents;
@@ -34,9 +35,7 @@ public sealed class DocumentProcessingJob(
             return;
         }
 
-        Guid? executionId = null;
-        using var activity = AiExecutionTelemetry.Start(AiExecutionOperation.DocumentAnalysis);
-        activity?.SetTag("gen_ai.operation.name", "document_processing");
+        AiExecutionScope? execution = null;
         try
         {
             var document = await (
@@ -45,7 +44,7 @@ public sealed class DocumentProcessingJob(
                     on processingRun.StoredDocumentId equals storedDocument.Id
                 where processingRun.Id == runId
                 select storedDocument).SingleAsync(cancellationToken);
-            executionId = await executionRecorder.StartAsync(
+            execution = await executionRecorder.StartScopeAsync(
                 new AiExecutionStart(
                     AiExecutionOperation.DocumentAnalysis,
                     new AiExecutionSubject(AiExecutionSubjectKind.Document, document.Id, document.OriginalFileName),
@@ -54,9 +53,7 @@ public sealed class DocumentProcessingJob(
                     null,
                     null),
                 cancellationToken);
-            activity?.SetTag("gen_ai.provider.name", "Docling");
-            await executionRecorder.RecordInputAsync(
-                executionId.Value,
+            await execution.RecordInputAsync(
                 JsonSerializer.Serialize(new
                 {
                     document.Id,
@@ -72,8 +69,7 @@ public sealed class DocumentProcessingJob(
                 document.ContentType,
                 content,
                 cancellationToken);
-            await executionRecorder.RecordOutputAsync(
-                executionId.Value,
+            await execution.RecordOutputAsync(
                 JsonSerializer.Serialize(parsed),
                 cancellationToken);
 
@@ -97,7 +93,8 @@ public sealed class DocumentProcessingJob(
             {
                 await transaction.CommitAsync(cancellationToken);
             }
-            await executionRecorder.CompleteAsync(executionId.Value, cancellationToken);
+            await execution.CompleteAsync(cancellationToken);
+            jobClient.Enqueue<DocumentEmbeddingJob>(job => job.ExecuteAsync(runId, CancellationToken.None));
             var attachments = await dbContext.Set<ConsultationDocument>().AsNoTracking()
                 .Where(item => item.StoredDocumentId == document.Id && item.KindOrigin == ConsultationDocumentKindOrigin.Automatic)
                 .Select(item => new { item.ConsultationId, item.StoredDocumentId })
@@ -116,11 +113,10 @@ public sealed class DocumentProcessingJob(
         {
             dbContext.ChangeTracker.Clear();
             await processingStore.FailAsync(runId, "L'analyse a été interrompue. Réessayez.", CancellationToken.None);
-            if (executionId is { } id)
+            if (execution is not null)
             {
-                await executionRecorder.FailAsync(id, "L'analyse a été interrompue. Réessayez.", false, CancellationToken.None);
+                await execution.FailAsync("L'analyse a été interrompue. Réessayez.", false, CancellationToken.None);
             }
-            activity?.SetStatus(ActivityStatusCode.Error, "cancelled");
             throw;
         }
         catch (Exception exception)
@@ -128,12 +124,15 @@ public sealed class DocumentProcessingJob(
             LogProcessingFailed(logger, runId, exception);
             dbContext.ChangeTracker.Clear();
             await processingStore.FailAsync(runId, "L'analyse du document a échoué. Réessayez.", CancellationToken.None);
-            if (executionId is { } id)
+            if (execution is not null)
             {
-                await executionRecorder.FailAsync(id, "L'analyse du document a échoué. Réessayez.", false, CancellationToken.None);
+                await execution.FailAsync("L'analyse du document a échoué. Réessayez.", false, CancellationToken.None);
             }
-            activity?.SetStatus(ActivityStatusCode.Error, "failed");
             throw;
+        }
+        finally
+        {
+            execution?.Dispose();
         }
     }
 }

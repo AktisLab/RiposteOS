@@ -1,6 +1,7 @@
 import type {
   DocumentAnalysis,
   DocumentClassification,
+  DocumentEmbedding,
   ConsultationDocumentKind,
   CreateConsultationRequest,
 } from './api.ts'
@@ -35,7 +36,7 @@ type DocumentProcessingPresentation = {
   label: string
   isActive: boolean
   actionLabel?: string
-  retryTarget?: 'analysis' | 'classification'
+  retryTarget?: 'analysis' | 'classification' | 'embedding'
 }
 
 export function nextConsultationAction(documentCount: number) {
@@ -113,9 +114,36 @@ function getDocumentClassificationPresentation(
   }
 }
 
+function getDocumentEmbeddingPresentation(embedding: DocumentEmbedding) {
+  switch (embedding.status) {
+    case 'NotStarted':
+      return {
+        label: 'Indexation à lancer',
+        actionLabel: 'Indexer',
+        isActive: false,
+      }
+    case 'Queued':
+      return { label: 'Indexation en attente', isActive: true }
+    case 'Running':
+      return { label: 'Indexation en cours…', isActive: true }
+    case 'Completed':
+      return {
+        label: `Indexé · ${embedding.indexedPassageCount}/${embedding.passageCount}`,
+        isActive: false,
+      }
+    case 'Failed':
+      return {
+        label: 'Indexation à reprendre',
+        actionLabel: 'Réessayer',
+        isActive: false,
+      }
+  }
+}
+
 export function getDocumentProcessingPresentation(
   analysis: DocumentAnalysis,
-  classification: DocumentClassification | undefined
+  classification: DocumentClassification | undefined,
+  embedding?: DocumentEmbedding
 ): DocumentProcessingPresentation {
   const analysisPresentation = getDocumentAnalysisPresentation(analysis)
   if (analysis.status !== 'Completed') {
@@ -126,24 +154,36 @@ export function getDocumentProcessingPresentation(
 
   const classificationPresentation =
     getDocumentClassificationPresentation(classification)
-  if (!classificationPresentation.label) return analysisPresentation
+  if (classificationPresentation.label) {
+    return classificationPresentation.actionLabel
+      ? {
+          ...classificationPresentation,
+          retryTarget: 'classification' as const,
+        }
+      : classificationPresentation
+  }
 
-  return classificationPresentation.actionLabel
-    ? { ...classificationPresentation, retryTarget: 'classification' as const }
-    : classificationPresentation
+  if (!embedding) return analysisPresentation
+
+  const embeddingPresentation = getDocumentEmbeddingPresentation(embedding)
+  return embeddingPresentation.actionLabel
+    ? { ...embeddingPresentation, retryTarget: 'embedding' as const }
+    : embeddingPresentation
 }
 
 export function hasActiveDocumentProcessing(
   documents: {
     analysis: DocumentAnalysis
     classification?: DocumentClassification
+    embedding?: DocumentEmbedding
   }[]
 ) {
   return documents.some(
     (document) =>
       getDocumentProcessingPresentation(
         document.analysis,
-        document.classification
+        document.classification,
+        document.embedding
       ).isActive
   )
 }

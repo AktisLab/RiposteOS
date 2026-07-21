@@ -48,6 +48,7 @@ export type ConsultationDocument = {
   downloadUrl: string
   analysis: DocumentAnalysis
   classification: DocumentClassification
+  embedding: DocumentEmbedding
 }
 
 export type DocumentAnalysisStatus =
@@ -87,6 +88,20 @@ export type DocumentClassification = {
   failedAt: string | null
   providerName: string | null
   model: string | null
+  errorMessage: string | null
+}
+
+export type DocumentEmbeddingStatus =
+  | 'NotStarted'
+  | 'Queued'
+  | 'Running'
+  | 'Completed'
+  | 'Failed'
+
+export type DocumentEmbedding = {
+  status: DocumentEmbeddingStatus
+  indexedPassageCount: number
+  passageCount: number
   errorMessage: string | null
 }
 
@@ -225,6 +240,18 @@ export const retryDocumentClassification = (
     {
       method: 'POST',
       errorMessage: 'Impossible de relancer le classement du document.',
+    }
+  )
+
+export const retryDocumentEmbedding = (
+  consultationId: string,
+  documentId: string
+) =>
+  apiRequest<ConsultationDocument>(
+    `/api/consultations/${consultationId}/documents/${documentId}/embedding`,
+    {
+      method: 'POST',
+      errorMessage: 'Impossible de relancer l’indexation du document.',
     }
   )
 

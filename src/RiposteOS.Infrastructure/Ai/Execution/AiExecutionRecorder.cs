@@ -2,9 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using RiposteOS.Core.Ai;
 using RiposteOS.Infrastructure.Persistence;
 
-namespace RiposteOS.Infrastructure.Ai;
+namespace RiposteOS.Infrastructure.Ai.Execution;
 
-public sealed class AiExecutionRecorder(RiposteDbContext dbContext, TimeProvider timeProvider)
+public sealed partial class AiExecutionRecorder(RiposteDbContext dbContext, TimeProvider timeProvider)
 {
     public async Task<Guid> StartAsync(AiExecutionStart start, CancellationToken cancellationToken)
     {

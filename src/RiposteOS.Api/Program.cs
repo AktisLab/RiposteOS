@@ -48,6 +48,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 app.MapSourcingEndpoints();
 app.MapDocumentsEndpoints();
 app.MapConsultationsEndpoints();
+app.MapConsultationAssistantEndpoints();
 app.MapAiEndpoints();
 
 app.Run();

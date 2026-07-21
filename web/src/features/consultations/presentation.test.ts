@@ -127,6 +127,42 @@ test('presents document analysis states', () => {
   )
 })
 
+test('presents a single document status through indexing', () => {
+  assert.deepEqual(
+    getDocumentProcessingPresentation(
+      {
+        status: 'Completed',
+        queuedAt: null,
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+        pageCount: 3,
+        passageCount: 20,
+        errorMessage: null,
+      },
+      {
+        status: 'Completed',
+        proposedKind: null,
+        confidence: null,
+        queuedAt: null,
+        startedAt: null,
+        completedAt: null,
+        failedAt: null,
+        providerName: null,
+        model: null,
+        errorMessage: null,
+      },
+      {
+        status: 'Running',
+        indexedPassageCount: 7,
+        passageCount: 20,
+        errorMessage: null,
+      }
+    ),
+    { label: 'Indexation en cours…', isActive: true }
+  )
+})
+
 test('normalizes the manual consultation form', () => {
   const normalized = normalizeConsultationForm({
     title: '  Marché de travaux ',

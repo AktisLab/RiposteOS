@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using RiposteOS.Core.Ai;
 using RiposteOS.Infrastructure.Persistence;
-namespace RiposteOS.Infrastructure.Ai;
+namespace RiposteOS.Infrastructure.Ai.DocumentClassification;
 
 public sealed class DocumentClassificationStore(RiposteDbContext dbContext, TimeProvider timeProvider)
 {

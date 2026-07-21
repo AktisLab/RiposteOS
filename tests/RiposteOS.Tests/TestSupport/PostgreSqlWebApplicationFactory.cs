@@ -2,6 +2,7 @@ using Hangfire;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Pgvector.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -23,7 +24,7 @@ public sealed class PostgreSqlWebApplicationFactory(string connectionString)
             services.RemoveAll<RiposteDbContext>();
             services.AddDbContext<RiposteDbContext>(options => options.UseNpgsql(
                 connectionString,
-                npgsql => npgsql.MigrationsHistoryTable(
+                npgsql => npgsql.UseVector().MigrationsHistoryTable(
                     "__EFMigrationsHistory",
                     DatabaseSchemas.Infrastructure)));
             services.RemoveAll<IBackgroundJobClient>();

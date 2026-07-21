@@ -3,6 +3,7 @@ using Gridify.EntityFramework;
 using Microsoft.EntityFrameworkCore;
 using RiposteOS.Core.Ai;
 using RiposteOS.Infrastructure.Persistence;
+using RiposteOS.Infrastructure.Ai.Providers;
 
 namespace RiposteOS.Infrastructure.Ai;
 
@@ -14,10 +15,12 @@ public sealed class AiFacade(
     private static readonly AiExecutionLogGridifyMapper ExecutionLogMapper = new();
 
     public Task<AiProvider[]> ListProvidersAsync(CancellationToken ct) => dbContext.Set<AiProvider>().AsNoTracking().OrderBy(x => x.Name).ToArrayAsync(ct);
-    public async Task<AiProvider> CreateProviderAsync(string name, AiProviderProtocol protocol, string baseUrl, string model, string? apiKeyEnvironmentVariableName, bool isEnabled, CancellationToken ct) { var provider = new AiProvider(name, protocol, baseUrl, model, apiKeyEnvironmentVariableName, isEnabled, timeProvider.GetUtcNow()); dbContext.Set<AiProvider>().Add(provider); await dbContext.SaveChangesAsync(ct); return provider; }
-    public async Task<AiProvider?> UpdateProviderAsync(Guid id, string name, AiProviderProtocol protocol, string baseUrl, string model, string? apiKeyEnvironmentVariableName, bool isEnabled, CancellationToken ct) { var p = await dbContext.Set<AiProvider>().SingleOrDefaultAsync(x => x.Id == id, ct); if (p is null) return null; p.Update(name, protocol, baseUrl, model, apiKeyEnvironmentVariableName, isEnabled, timeProvider.GetUtcNow()); await dbContext.SaveChangesAsync(ct); return p; }
+    public Task<AiProvider> CreateProviderAsync(string name, AiProviderProtocol protocol, string baseUrl, string model, string? apiKeyEnvironmentVariableName, bool isEnabled, CancellationToken ct) => CreateProviderAsync(name, protocol, baseUrl, model, apiKeyEnvironmentVariableName, isEnabled, AiProviderCapabilities.Chat, ct);
+    public async Task<AiProvider> CreateProviderAsync(string name, AiProviderProtocol protocol, string baseUrl, string model, string? apiKeyEnvironmentVariableName, bool isEnabled, AiProviderCapabilities capabilities, CancellationToken ct) { var provider = new AiProvider(name, protocol, baseUrl, model, apiKeyEnvironmentVariableName, isEnabled, timeProvider.GetUtcNow(), capabilities); dbContext.Set<AiProvider>().Add(provider); await dbContext.SaveChangesAsync(ct); return provider; }
+    public Task<AiProvider?> UpdateProviderAsync(Guid id, string name, AiProviderProtocol protocol, string baseUrl, string model, string? apiKeyEnvironmentVariableName, bool isEnabled, CancellationToken ct) => UpdateProviderAsync(id, name, protocol, baseUrl, model, apiKeyEnvironmentVariableName, isEnabled, AiProviderCapabilities.Chat, ct);
+    public async Task<AiProvider?> UpdateProviderAsync(Guid id, string name, AiProviderProtocol protocol, string baseUrl, string model, string? apiKeyEnvironmentVariableName, bool isEnabled, AiProviderCapabilities capabilities, CancellationToken ct) { var p = await dbContext.Set<AiProvider>().SingleOrDefaultAsync(x => x.Id == id, ct); if (p is null) return null; p.Update(name, protocol, baseUrl, model, apiKeyEnvironmentVariableName, isEnabled, timeProvider.GetUtcNow(), capabilities); await dbContext.SaveChangesAsync(ct); return p; }
     public async Task<bool> DeleteProviderAsync(Guid id, CancellationToken ct) { if (await dbContext.Set<AiTaskAssignment>().AnyAsync(x => x.ProviderId == id, ct) || await dbContext.Set<ConsultationDocumentClassification>().AnyAsync(x => x.ProviderId == id, ct)) return false; var p = await dbContext.Set<AiProvider>().SingleOrDefaultAsync(x => x.Id == id, ct); if (p is null) return false; dbContext.Remove(p); await dbContext.SaveChangesAsync(ct); return true; }
-    public async Task<bool> AssignAsync(AiTask task, Guid providerId, CancellationToken ct) { var provider = await dbContext.Set<AiProvider>().SingleOrDefaultAsync(x => x.Id == providerId && x.IsEnabled, ct); if (provider is null) return false; var assignment = await dbContext.Set<AiTaskAssignment>().SingleOrDefaultAsync(x => x.Task == task, ct); if (assignment is null) dbContext.Set<AiTaskAssignment>().Add(new AiTaskAssignment(task, providerId, timeProvider.GetUtcNow())); else assignment.Assign(providerId, timeProvider.GetUtcNow()); await dbContext.SaveChangesAsync(ct); return true; }
+    public async Task<bool> AssignAsync(AiTask task, Guid providerId, CancellationToken ct) { var provider = await dbContext.Set<AiProvider>().SingleOrDefaultAsync(x => x.Id == providerId && x.IsEnabled, ct); var required = AiTaskCapabilities.RequiredBy(task); if (provider is null || (provider.Capabilities & required) != required) return false; var assignment = await dbContext.Set<AiTaskAssignment>().SingleOrDefaultAsync(x => x.Task == task, ct); if (assignment is null) dbContext.Set<AiTaskAssignment>().Add(new AiTaskAssignment(task, providerId, timeProvider.GetUtcNow())); else assignment.Assign(providerId, timeProvider.GetUtcNow()); await dbContext.SaveChangesAsync(ct); return true; }
     public Task<AiTaskAssignment?> GetAssignmentAsync(AiTask task, CancellationToken ct) => dbContext.Set<AiTaskAssignment>().AsNoTracking().SingleOrDefaultAsync(x => x.Task == task, ct);
 
     public async Task<AiExecutionLogPageResult> ListExecutionLogsAsync(
@@ -72,7 +75,7 @@ public sealed class AiFacade(
             return null;
         }
 
-        var status = await CheckAsync(provider, ct);
+        var status = await TestAsync(provider, ct);
         provider.RecordHealthCheck(status, timeProvider.GetUtcNow());
         await dbContext.SaveChangesAsync(ct);
         return status == AiProviderHealthStatus.Available;
@@ -94,6 +97,22 @@ public sealed class AiFacade(
         try
         {
             return await healthChecker.CheckAsync(provider, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return AiProviderHealthStatus.Unavailable;
+        }
+    }
+
+    private async Task<AiProviderHealthStatus> TestAsync(AiProvider provider, CancellationToken ct)
+    {
+        try
+        {
+            return await healthChecker.TestAsync(provider, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

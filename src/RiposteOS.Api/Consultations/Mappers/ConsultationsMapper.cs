@@ -44,7 +44,12 @@ public static partial class ConsultationsMapper
                 document.Classification.FailedAt,
                 document.Classification.ProviderName,
                 document.Classification.Model,
-                document.Classification.ErrorMessage));
+                document.Classification.ErrorMessage),
+            new DocumentEmbeddingResponse(
+                document.Embedding.Status,
+                document.Embedding.IndexedPassageCount,
+                document.Embedding.PassageCount,
+                document.Embedding.ErrorMessage));
 
     public static ConsultationDocumentResponse[] ToDocumentResponses(
         IEnumerable<ConsultationDocumentResult> documents) =>

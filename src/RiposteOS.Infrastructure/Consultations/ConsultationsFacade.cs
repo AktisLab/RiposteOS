@@ -8,6 +8,7 @@ using RiposteOS.Core.Documents;
 using RiposteOS.Core.Ai;
 using RiposteOS.Core.Sourcing;
 using RiposteOS.Infrastructure.Ai;
+using RiposteOS.Infrastructure.Ai.DocumentClassification;
 using RiposteOS.Infrastructure.Persistence;
 using RiposteOS.Infrastructure.Documents;
 
@@ -142,6 +143,15 @@ public sealed class ConsultationsFacade(
                 Classification = classification,
             }).ToArrayAsync(cancellationToken);
 
+        var runIds = documents.Where(document => document.Run is not null).Select(document => document.Run!.Id).ToArray();
+        EmbeddingState[] embeddings = runIds.Length == 0
+            ? []
+            : await (from passage in dbContext.Set<DocumentPassage>().AsNoTracking()
+                     join embedding in dbContext.Set<DocumentPassageEmbedding>().AsNoTracking() on passage.Id equals embedding.DocumentPassageId
+                     where runIds.Contains(passage.DocumentProcessingRunId)
+                     select new EmbeddingState(passage.DocumentProcessingRunId, embedding.Status, embedding.ErrorMessage)).ToArrayAsync(cancellationToken);
+        var summaries = embeddings.GroupBy(item => item.RunId).ToDictionary(group => group.Key, group => new EmbeddingSummary(group.Count(item => item.Status == DocumentPassageEmbeddingStatus.Completed), group.Any(item => item.Status == DocumentPassageEmbeddingStatus.Running), group.Any(item => item.Status == DocumentPassageEmbeddingStatus.Queued), group.FirstOrDefault(item => item.Status == DocumentPassageEmbeddingStatus.Failed)?.ErrorMessage));
+
         return documents.Select(document => new ConsultationDocumentResult(
             document.Id,
             document.OriginalFileName,
@@ -152,7 +162,8 @@ public sealed class ConsultationsFacade(
             document.KindOrigin,
             document.AddedAt,
             ToAnalysis(document.ContentType, document.Run),
-            ToClassification(document.Classification))).ToArray();
+            ToClassification(document.Classification),
+            ToEmbedding(document.Run, summaries.GetValueOrDefault(document.Run?.Id ?? Guid.Empty)))).ToArray();
     }
 
     public async Task<DocumentPassageResult[]?> ListDocumentPassagesAsync(
@@ -364,6 +375,22 @@ public sealed class ConsultationsFacade(
         return await GetDocumentAsync(consultationId, storedDocumentId, cancellationToken);
     }
 
+    public async Task<ConsultationDocumentResult?> RetryDocumentEmbeddingAsync(
+        Guid consultationId,
+        Guid storedDocumentId,
+        CancellationToken cancellationToken)
+    {
+        var document = await GetDocumentAsync(consultationId, storedDocumentId, cancellationToken);
+        if (document is null || document.Analysis.Status != DocumentProcessingStatus.Completed.ToString()) return document;
+        if (document.Embedding.Status is not ("NotStarted" or "Failed" or "Queued")) return document;
+        var runId = await (from link in dbContext.Set<ConsultationDocument>().AsNoTracking()
+                           join run in dbContext.Set<DocumentProcessingRun>().AsNoTracking() on link.StoredDocumentId equals run.StoredDocumentId
+                           where link.ConsultationId == consultationId && link.StoredDocumentId == storedDocumentId && run.Status == DocumentProcessingStatus.Completed
+                           select (Guid?)run.Id).SingleOrDefaultAsync(cancellationToken);
+        if (runId is { } id) jobClient.Enqueue<DocumentEmbeddingJob>(job => job.ExecuteAsync(id, CancellationToken.None));
+        return document;
+    }
+
     public async Task<bool> DetachDocumentAsync(
         Guid consultationId,
         Guid storedDocumentId,
@@ -440,45 +467,7 @@ public sealed class ConsultationsFacade(
         Guid storedDocumentId,
         CancellationToken cancellationToken)
     {
-        var document = await (
-            from link in dbContext.Set<ConsultationDocument>().AsNoTracking()
-            join storedDocument in dbContext.Set<StoredDocument>().AsNoTracking()
-                on link.StoredDocumentId equals storedDocument.Id
-            join run in dbContext.Set<DocumentProcessingRun>().AsNoTracking()
-                on storedDocument.Id equals run.StoredDocumentId into runs
-            from run in runs.DefaultIfEmpty()
-            join classification in dbContext.Set<ConsultationDocumentClassification>().AsNoTracking()
-                on new { link.ConsultationId, link.StoredDocumentId } equals new { classification.ConsultationId, classification.StoredDocumentId } into classifications
-            from classification in classifications.DefaultIfEmpty()
-            where link.ConsultationId == consultationId
-                && link.StoredDocumentId == storedDocumentId
-            select new
-            {
-                storedDocument.Id,
-                storedDocument.OriginalFileName,
-                storedDocument.ContentType,
-                storedDocument.Size,
-                storedDocument.CreatedAt,
-                link.Kind,
-                link.KindOrigin,
-                link.AddedAt,
-                Run = run,
-                Classification = classification,
-            }).SingleOrDefaultAsync(cancellationToken);
-
-        return document is null
-            ? null
-            : new ConsultationDocumentResult(
-                document.Id,
-                document.OriginalFileName,
-                document.ContentType,
-                document.Size,
-                document.CreatedAt,
-                document.Kind,
-                document.KindOrigin,
-                document.AddedAt,
-                ToAnalysis(document.ContentType, document.Run),
-                ToClassification(document.Classification));
+        return (await ListDocumentsAsync(consultationId, cancellationToken))?.SingleOrDefault(document => document.Id == storedDocumentId);
     }
 
     private static DocumentAnalysisResult ToAnalysis(string contentType, DocumentProcessingRun? run) =>
@@ -510,6 +499,19 @@ public sealed class ConsultationsFacade(
                 classification.ProviderName,
                 classification.Model,
                 classification.ErrorMessage);
+
+    private static DocumentEmbeddingResult ToEmbedding(DocumentProcessingRun? run, EmbeddingSummary? summary)
+    {
+        if (run is null || run.Status != DocumentProcessingStatus.Completed) return new DocumentEmbeddingResult("NotStarted", 0, run?.PassageCount ?? 0, null);
+        if (run.PassageCount == 0) return new DocumentEmbeddingResult("Completed", 0, 0, null);
+        if (summary is null) return new DocumentEmbeddingResult("Queued", 0, run.PassageCount, null);
+        if (summary.ErrorMessage is not null) return new DocumentEmbeddingResult("Failed", summary.CompletedCount, run.PassageCount, summary.ErrorMessage);
+        if (summary.IsRunning) return new DocumentEmbeddingResult("Running", summary.CompletedCount, run.PassageCount, null);
+        return new DocumentEmbeddingResult(summary.CompletedCount == run.PassageCount ? "Completed" : "Queued", summary.CompletedCount, run.PassageCount, null);
+    }
+
+    private sealed record EmbeddingSummary(int CompletedCount, bool IsRunning, bool IsQueued, string? ErrorMessage);
+    private sealed record EmbeddingState(Guid RunId, DocumentPassageEmbeddingStatus Status, string? ErrorMessage);
 
     private static ConsultationResult ToResult(
         Consultation consultation,

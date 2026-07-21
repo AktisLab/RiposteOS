@@ -1,7 +1,11 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging.Abstractions;
 using RiposteOS.Core.Ai;
 using RiposteOS.Infrastructure.Ai;
+using RiposteOS.Infrastructure.Ai.Providers;
 
 namespace RiposteOS.Tests.Ai;
 
@@ -62,6 +66,19 @@ public sealed class OpenAiCompatibleProviderHealthCheckerTests
         }
     }
 
+    [Fact]
+    public async Task ManualTestProbesTheDeclaredToolCallingContract()
+    {
+        var checker = new OpenAiCompatibleProviderHealthChecker(
+            new HttpClient(new RecordingHandler(HttpStatusCode.OK)),
+            new ProbeChatFactory(),
+            NullLoggerFactory.Instance);
+        var provider = new AiProvider("provider", AiProviderProtocol.OpenAiCompatible, "http://provider.test/v1", "model", null, true, DateTimeOffset.UtcNow, AiProviderCapabilities.Chat | AiProviderCapabilities.ToolCalling);
+
+        Assert.Equal(AiProviderHealthStatus.Available, await checker.TestAsync(provider, CancellationToken.None));
+        Assert.Equal(AiProviderHealthStatus.Unavailable, await new OpenAiCompatibleProviderHealthChecker(new HttpClient(new RecordingHandler(HttpStatusCode.OK))).TestAsync(provider, CancellationToken.None));
+    }
+
     private static AiProvider Provider(string? apiKeyEnvironmentVariableName = null) =>
         new("provider", AiProviderProtocol.OpenAiCompatible, "http://provider.test/v1", "model", apiKeyEnvironmentVariableName, true, DateTimeOffset.UtcNow);
 
@@ -85,5 +102,30 @@ public sealed class OpenAiCompatibleProviderHealthCheckerTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             throw new HttpRequestException();
+    }
+
+    private sealed class ProbeChatFactory : IAiChatClientFactory
+    {
+        public IChatClient Create(AiProvider provider) => new ProbeChatClient();
+    }
+
+    private sealed class ProbeChatClient : IChatClient
+    {
+        public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            if (messages.SelectMany(message => message.Contents).OfType<FunctionResultContent>().Any())
+            {
+                yield return new ChatResponseUpdate(ChatRole.Assistant, "OK");
+                yield break;
+            }
+
+            yield return new ChatResponseUpdate(ChatRole.Assistant, [new FunctionCallContent("probe", "health_probe", new Dictionary<string, object?>())]);
+        }
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+        public void Dispose() { }
     }
 }

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using RiposteOS.Core.Ai;
 using RiposteOS.Infrastructure.Ai;
+using RiposteOS.Infrastructure.Ai.Providers;
 using RiposteOS.Tests.TestSupport;
 
 namespace RiposteOS.Tests.Ai;
