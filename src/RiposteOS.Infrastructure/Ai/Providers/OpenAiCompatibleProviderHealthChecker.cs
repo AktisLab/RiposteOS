@@ -7,6 +7,7 @@ namespace RiposteOS.Infrastructure.Ai.Providers;
 
 public sealed class OpenAiCompatibleProviderHealthChecker(
     HttpClient client,
+    AiProviderApiKeyResolver apiKeyResolver,
     IAiChatClientFactory? chatClientFactory = null,
     ILoggerFactory? loggerFactory = null) : IAiProviderHealthChecker
 {
@@ -20,14 +21,9 @@ public sealed class OpenAiCompatibleProviderHealthChecker(
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, $"{provider.BaseUrl.TrimEnd('/')}/models");
-            if (provider.ApiKeyEnvironmentVariableName is { } environmentVariableName)
+            var apiKey = apiKeyResolver.Resolve(provider);
+            if (apiKey is not null)
             {
-                var apiKey = Environment.GetEnvironmentVariable(environmentVariableName);
-                if (string.IsNullOrWhiteSpace(apiKey))
-                {
-                    return AiProviderHealthStatus.Unavailable;
-                }
-
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             }
 

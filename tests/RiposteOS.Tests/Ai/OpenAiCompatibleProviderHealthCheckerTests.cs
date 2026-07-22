@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RiposteOS.Core.Ai;
 using RiposteOS.Infrastructure.Ai;
 using RiposteOS.Infrastructure.Ai.Providers;
+using RiposteOS.Tests.TestSupport;
 
 namespace RiposteOS.Tests.Ai;
 
@@ -15,7 +16,7 @@ public sealed class OpenAiCompatibleProviderHealthCheckerTests
     public async Task ChecksModelsEndpointWithoutGeneratingContent()
     {
         var handler = new RecordingHandler(HttpStatusCode.OK);
-        var checker = new OpenAiCompatibleProviderHealthChecker(new HttpClient(handler));
+        var checker = new OpenAiCompatibleProviderHealthChecker(new HttpClient(handler), TestAiSecrets.CreateResolver());
         var provider = Provider(apiKeyEnvironmentVariableName: null);
 
         var status = await checker.CheckAsync(provider, CancellationToken.None);
@@ -29,9 +30,9 @@ public sealed class OpenAiCompatibleProviderHealthCheckerTests
     [Fact]
     public async Task ReturnsUnavailableForHttpFailureMissingSecretAndTransportFailure()
     {
-        var failedChecker = new OpenAiCompatibleProviderHealthChecker(new HttpClient(new RecordingHandler(HttpStatusCode.BadGateway)));
-        var missingSecretChecker = new OpenAiCompatibleProviderHealthChecker(new HttpClient(new RecordingHandler(HttpStatusCode.OK)));
-        var throwingChecker = new OpenAiCompatibleProviderHealthChecker(new HttpClient(new ThrowingHandler()));
+        var failedChecker = new OpenAiCompatibleProviderHealthChecker(new HttpClient(new RecordingHandler(HttpStatusCode.BadGateway)), TestAiSecrets.CreateResolver());
+        var missingSecretChecker = new OpenAiCompatibleProviderHealthChecker(new HttpClient(new RecordingHandler(HttpStatusCode.OK)), TestAiSecrets.CreateResolver());
+        var throwingChecker = new OpenAiCompatibleProviderHealthChecker(new HttpClient(new ThrowingHandler()), TestAiSecrets.CreateResolver());
         var provider = Provider(apiKeyEnvironmentVariableName: null);
 
         Assert.Equal(AiProviderHealthStatus.Unavailable, await failedChecker.CheckAsync(provider, CancellationToken.None));
@@ -52,7 +53,7 @@ public sealed class OpenAiCompatibleProviderHealthCheckerTests
         try
         {
             var handler = new RecordingHandler(HttpStatusCode.OK);
-            var checker = new OpenAiCompatibleProviderHealthChecker(new HttpClient(handler));
+            var checker = new OpenAiCompatibleProviderHealthChecker(new HttpClient(handler), TestAiSecrets.CreateResolver());
             var cancellation = new CancellationTokenSource();
             cancellation.Cancel();
 
@@ -71,12 +72,13 @@ public sealed class OpenAiCompatibleProviderHealthCheckerTests
     {
         var checker = new OpenAiCompatibleProviderHealthChecker(
             new HttpClient(new RecordingHandler(HttpStatusCode.OK)),
+            TestAiSecrets.CreateResolver(),
             new ProbeChatFactory(),
             NullLoggerFactory.Instance);
         var provider = new AiProvider("provider", AiProviderProtocol.OpenAiCompatible, "http://provider.test/v1", "model", null, true, DateTimeOffset.UtcNow, AiProviderCapabilities.Chat | AiProviderCapabilities.ToolCalling);
 
         Assert.Equal(AiProviderHealthStatus.Available, await checker.TestAsync(provider, CancellationToken.None));
-        Assert.Equal(AiProviderHealthStatus.Unavailable, await new OpenAiCompatibleProviderHealthChecker(new HttpClient(new RecordingHandler(HttpStatusCode.OK))).TestAsync(provider, CancellationToken.None));
+        Assert.Equal(AiProviderHealthStatus.Unavailable, await new OpenAiCompatibleProviderHealthChecker(new HttpClient(new RecordingHandler(HttpStatusCode.OK)), TestAiSecrets.CreateResolver()).TestAsync(provider, CancellationToken.None));
     }
 
     private static AiProvider Provider(string? apiKeyEnvironmentVariableName = null) =>

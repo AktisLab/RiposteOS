@@ -48,12 +48,14 @@ import {
   assignAiTaskProvider,
   aiProvidersQueryKey,
   assignDocumentClassificationProvider,
+  clearAiProviderApiKey,
   createAiProvider,
   deleteAiProvider,
   documentClassificationAssignmentQueryKey,
   getAiProviders,
   getAiTaskAssignment,
   getDocumentClassificationAssignment,
+  setAiProviderApiKey,
   testAiProviderConnection,
   updateAiProvider,
 } from './api'
@@ -442,10 +444,16 @@ function CreateProviderDialog({
   onCreated: () => void
 }) {
   const [value, setValue] = useState<AiProviderRequest>(emptyProvider)
+  const [apiKey, setApiKey] = useState('')
   const createMutation = useMutation({
-    mutationFn: () => createAiProvider(value),
+    mutationFn: async () => {
+      const provider = await createAiProvider(value)
+      if (apiKey) await setAiProviderApiKey(provider.id, apiKey)
+      return provider
+    },
     onSuccess: () => {
       setValue(emptyProvider)
+      setApiKey('')
       onCreated()
       onOpenChange(false)
       toast.success('Fournisseur IA ajouté')
@@ -465,14 +473,17 @@ function CreateProviderDialog({
           <DialogHeader>
             <DialogTitle>Ajouter un serveur IA</DialogTitle>
             <DialogDescription>
-              RiposteOS utilise les endpoints compatibles OpenAI. La clé, si
-              nécessaire, reste une variable de votre environnement.
+              RiposteOS utilise les endpoints compatibles OpenAI. Une clé saisie
+              ici est chiffrée et ne sera plus affichée.
             </DialogDescription>
           </DialogHeader>
           <div className='mt-6 grid gap-4 sm:grid-cols-2'>
             <ProviderFields
               value={value}
               onChange={setValue}
+              apiKey={apiKey}
+              onApiKeyChange={setApiKey}
+              hasStoredApiKey={false}
               idPrefix='new-provider'
             />
           </div>
@@ -501,6 +512,10 @@ function ProviderDialog({
   onOpenChange: (open: boolean) => void
   onSaved: () => void
 }) {
+  const [apiKey, setApiKey] = useState('')
+  const [hasStoredApiKey, setHasStoredApiKey] = useState(
+    provider.hasStoredApiKey
+  )
   const [value, setValue] = useState<AiProviderRequest>({
     name: provider.name,
     protocol: provider.protocol,
@@ -511,11 +526,25 @@ function ProviderDialog({
     capabilities: provider.capabilities,
   })
   const updateMutation = useMutation({
-    mutationFn: () => updateAiProvider(provider.id, value),
+    mutationFn: async () => {
+      const updated = await updateAiProvider(provider.id, value)
+      if (apiKey) await setAiProviderApiKey(provider.id, apiKey)
+      return updated
+    },
     onSuccess: () => {
       onSaved()
       onOpenChange(false)
       toast.success('Fournisseur IA enregistré')
+    },
+    onError: (error) => toast.error(error.message),
+  })
+  const clearApiKeyMutation = useMutation({
+    mutationFn: () => clearAiProviderApiKey(provider.id),
+    onSuccess: () => {
+      setApiKey('')
+      setHasStoredApiKey(false)
+      onSaved()
+      toast.success('Clé API supprimée')
     },
     onError: (error) => toast.error(error.message),
   })
@@ -536,6 +565,15 @@ function ProviderDialog({
     },
     onError: (error) => toast.error(error.message),
   })
+  const hasUnsavedChanges =
+    apiKey.length > 0 ||
+    value.name !== provider.name ||
+    value.model !== provider.model ||
+    value.baseUrl !== provider.baseUrl ||
+    value.apiKeyEnvironmentVariableName !==
+      provider.apiKeyEnvironmentVariableName ||
+    value.isEnabled !== provider.isEnabled ||
+    value.capabilities !== provider.capabilities
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
@@ -557,6 +595,10 @@ function ProviderDialog({
             <ProviderFields
               value={value}
               onChange={setValue}
+              apiKey={apiKey}
+              onApiKeyChange={setApiKey}
+              hasStoredApiKey={hasStoredApiKey}
+              onClearApiKey={() => clearApiKeyMutation.mutate()}
               idPrefix={provider.id}
             />
           </div>
@@ -568,7 +610,8 @@ function ProviderDialog({
               disabled={
                 updateMutation.isPending ||
                 deleteMutation.isPending ||
-                testMutation.isPending
+                testMutation.isPending ||
+                clearApiKeyMutation.isPending
               }
               onClick={() => deleteMutation.mutate()}
             >
@@ -584,9 +627,11 @@ function ProviderDialog({
               variant='outline'
               disabled={
                 !value.isEnabled ||
+                hasUnsavedChanges ||
                 updateMutation.isPending ||
                 deleteMutation.isPending ||
-                testMutation.isPending
+                testMutation.isPending ||
+                clearApiKeyMutation.isPending
               }
               onClick={() => testMutation.mutate()}
             >
@@ -602,7 +647,8 @@ function ProviderDialog({
               disabled={
                 updateMutation.isPending ||
                 deleteMutation.isPending ||
-                testMutation.isPending
+                testMutation.isPending ||
+                clearApiKeyMutation.isPending
               }
             >
               {updateMutation.isPending ? (
@@ -622,10 +668,18 @@ function ProviderDialog({
 function ProviderFields({
   value,
   onChange,
+  apiKey,
+  onApiKeyChange,
+  hasStoredApiKey,
+  onClearApiKey,
   idPrefix,
 }: {
   value: AiProviderRequest
   onChange: React.Dispatch<React.SetStateAction<AiProviderRequest>>
+  apiKey: string
+  onApiKeyChange: (value: string) => void
+  hasStoredApiKey: boolean
+  onClearApiKey?: () => void
   idPrefix: string
 }) {
   const update = <K extends keyof AiProviderRequest>(
@@ -666,15 +720,46 @@ function ProviderFields({
           placeholder='https://…/v1'
         />
       </div>
-      <div className='space-y-2'>
-        <Label htmlFor={`${idPrefix}-api-key`}>
-          Variable de clé API{' '}
+      <div className='space-y-2 sm:col-span-2'>
+        <Label htmlFor={`${idPrefix}-stored-api-key`}>
+          Clé API{' '}
           <span className='font-normal text-muted-foreground'>
             (facultatif)
           </span>
         </Label>
+        <div className='flex gap-2'>
+          <Input
+            id={`${idPrefix}-stored-api-key`}
+            type='password'
+            autoComplete='new-password'
+            value={apiKey}
+            onChange={(event) => onApiKeyChange(event.target.value)}
+            placeholder={
+              hasStoredApiKey
+                ? 'Clé déjà enregistrée — laisser vide pour la conserver'
+                : 'Saisir la clé du fournisseur'
+            }
+          />
+          {hasStoredApiKey && onClearApiKey ? (
+            <Button type='button' variant='outline' onClick={onClearApiKey}>
+              Effacer
+            </Button>
+          ) : null}
+        </div>
+        <p className='text-xs text-muted-foreground'>
+          La valeur est chiffrée côté serveur et n’est jamais renvoyée au
+          navigateur.
+        </p>
+      </div>
+      <div className='space-y-2'>
+        <Label htmlFor={`${idPrefix}-api-key-environment`}>
+          Variable d’environnement{' '}
+          <span className='font-normal text-muted-foreground'>
+            (alternative)
+          </span>
+        </Label>
         <Input
-          id={`${idPrefix}-api-key`}
+          id={`${idPrefix}-api-key-environment`}
           value={value.apiKeyEnvironmentVariableName ?? ''}
           onChange={(event) =>
             update('apiKeyEnvironmentVariableName', event.target.value || null)

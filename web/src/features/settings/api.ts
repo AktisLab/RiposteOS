@@ -59,6 +59,7 @@ export type AiProvider = {
   baseUrl: string
   model: string
   apiKeyEnvironmentVariableName: string | null
+  hasStoredApiKey: boolean
   isEnabled: boolean
   capabilities: number
   healthStatus: AiProviderHealthStatus
@@ -69,7 +70,12 @@ export type AiProvider = {
 
 export type AiProviderRequest = Omit<
   AiProvider,
-  'id' | 'healthStatus' | 'healthCheckedAt' | 'createdAt' | 'updatedAt'
+  | 'id'
+  | 'hasStoredApiKey'
+  | 'healthStatus'
+  | 'healthCheckedAt'
+  | 'createdAt'
+  | 'updatedAt'
 >
 
 export type AiTaskAssignment = {
@@ -160,6 +166,20 @@ export const updateAiProvider = (id: string, provider: AiProviderRequest) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(provider),
     errorMessage: 'Impossible de modifier le fournisseur IA.',
+  })
+
+export const setAiProviderApiKey = (id: string, apiKey: string) =>
+  apiRequest<void>(`/api/settings/ai/providers/${id}/api-key`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey }),
+    errorMessage: 'Impossible d’enregistrer la clé API.',
+  })
+
+export const clearAiProviderApiKey = (id: string) =>
+  apiRequest<void>(`/api/settings/ai/providers/${id}/api-key`, {
+    method: 'DELETE',
+    errorMessage: 'Impossible de supprimer la clé API.',
   })
 
 export const deleteAiProvider = (id: string) =>

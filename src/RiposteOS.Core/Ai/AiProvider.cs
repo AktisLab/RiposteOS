@@ -2,9 +2,9 @@ namespace RiposteOS.Core.Ai;
 
 public sealed class AiProvider
 {
-    public AiProvider(Guid id, string name, AiProviderProtocol protocol, string baseUrl, string model, string? apiKeyEnvironmentVariableName, bool isEnabled, DateTimeOffset createdAt, DateTimeOffset updatedAt, AiProviderCapabilities capabilities = AiProviderCapabilities.Chat)
+    public AiProvider(Guid id, string name, AiProviderProtocol protocol, string baseUrl, string model, string? apiKeyEnvironmentVariableName, bool isEnabled, DateTimeOffset createdAt, DateTimeOffset updatedAt, AiProviderCapabilities capabilities = AiProviderCapabilities.Chat, string? encryptedApiKey = null)
     {
-        Id = id; Name = name; Protocol = protocol; BaseUrl = baseUrl; Model = model; ApiKeyEnvironmentVariableName = apiKeyEnvironmentVariableName; IsEnabled = isEnabled; CreatedAt = createdAt; UpdatedAt = updatedAt; Capabilities = ValidCapabilities(capabilities);
+        Id = id; Name = name; Protocol = protocol; BaseUrl = baseUrl; Model = model; ApiKeyEnvironmentVariableName = apiKeyEnvironmentVariableName; IsEnabled = isEnabled; CreatedAt = createdAt; UpdatedAt = updatedAt; Capabilities = ValidCapabilities(capabilities); EncryptedApiKey = encryptedApiKey;
     }
     public AiProvider(string name, AiProviderProtocol protocol, string baseUrl, string model, string? apiKeyEnvironmentVariableName, bool isEnabled, DateTimeOffset now, AiProviderCapabilities capabilities = AiProviderCapabilities.Chat)
     {
@@ -25,6 +25,8 @@ public sealed class AiProvider
     public string BaseUrl { get; private set; }
     public string Model { get; private set; }
     public string? ApiKeyEnvironmentVariableName { get; private set; }
+    public string? EncryptedApiKey { get; private set; }
+    public bool HasStoredApiKey => EncryptedApiKey is not null;
     public bool IsEnabled { get; private set; }
     public AiProviderCapabilities Capabilities { get; private set; }
     public AiProviderHealthStatus HealthStatus { get; private set; } = AiProviderHealthStatus.Unknown;
@@ -46,6 +48,25 @@ public sealed class AiProvider
         if (status is not (AiProviderHealthStatus.Available or AiProviderHealthStatus.Unavailable)) throw new ArgumentOutOfRangeException(nameof(status));
         HealthStatus = status;
         HealthCheckedAt = checkedAt;
+    }
+
+    public void SetEncryptedApiKey(string encryptedApiKey, DateTimeOffset now)
+    {
+        EncryptedApiKey = Required(encryptedApiKey, 8_000, nameof(encryptedApiKey));
+        ResetHealth(now);
+    }
+
+    public void ClearStoredApiKey(DateTimeOffset now)
+    {
+        EncryptedApiKey = null;
+        ResetHealth(now);
+    }
+
+    private void ResetHealth(DateTimeOffset now)
+    {
+        HealthStatus = AiProviderHealthStatus.Unknown;
+        HealthCheckedAt = null;
+        UpdatedAt = now;
     }
 
     private static string AbsoluteUrl(string value) => Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? uri.AbsoluteUri : throw new ArgumentException("An absolute HTTP URL is required.", nameof(value));

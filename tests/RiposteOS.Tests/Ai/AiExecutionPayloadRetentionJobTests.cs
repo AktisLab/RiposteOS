@@ -46,7 +46,7 @@ public sealed class AiExecutionPayloadRetentionJobTests(PostgreSqlFixture fixtur
         var execution = CreateExecution(Now);
         dbContext.Add(execution);
         await dbContext.SaveChangesAsync();
-        var facade = new AiFacade(dbContext, new NoopHealthChecker(), new FixedTimeProvider(Now));
+        var facade = new AiFacade(dbContext, new NoopHealthChecker(), TestAiSecrets.CreateProtector(), new FixedTimeProvider(Now));
 
         var result = await facade.ListExecutionLogsAsync(1, 10, null, "startedAt asc", CancellationToken.None);
 

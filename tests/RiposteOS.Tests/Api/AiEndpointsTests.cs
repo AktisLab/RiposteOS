@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using RiposteOS.Api.Ai;
 using RiposteOS.Api.Ai.Dtos;
@@ -81,6 +82,41 @@ public sealed class AiEndpointsTests(RiposteWebApplicationFactory factory) : ICl
         Assert.Equal(HttpStatusCode.BadGateway, unavailable.StatusCode);
         Assert.Equal("Unavailable", tested.HealthStatus);
         Assert.NotNull(tested.HealthCheckedAt);
+    }
+
+    [Fact]
+    public async Task ProviderApiKeyIsWriteOnlyEncryptedAndCanBeCleared()
+    {
+        await factory.ResetAsync();
+        var client = factory.CreateClient();
+        var provider = await CreateProviderAsync(client, isEnabled: false);
+        const string apiKey = "sk-openrouter-test-secret";
+
+        using var invalid = await client.PutAsJsonAsync($"/api/settings/ai/providers/{provider.Id}/api-key", new AiProviderApiKeyRequest(" "));
+        using var missing = await client.PutAsJsonAsync($"/api/settings/ai/providers/{Guid.NewGuid()}/api-key", new AiProviderApiKeyRequest(apiKey));
+        using var saved = await client.PutAsJsonAsync($"/api/settings/ai/providers/{provider.Id}/api-key", new AiProviderApiKeyRequest(apiKey));
+        var responseJson = await client.GetStringAsync("/api/settings/ai/providers");
+        var configured = (await client.GetFromJsonAsync<AiProviderResponse[]>("/api/settings/ai/providers"))!.Single();
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<RiposteDbContext>();
+            var stored = await dbContext.Set<AiProvider>().SingleAsync();
+            var resolver = scope.ServiceProvider.GetRequiredService<RiposteOS.Infrastructure.Ai.Providers.AiProviderApiKeyResolver>();
+            Assert.NotEqual(apiKey, stored.EncryptedApiKey);
+            Assert.Equal(apiKey, resolver.Resolve(stored));
+        }
+
+        using var cleared = await client.DeleteAsync($"/api/settings/ai/providers/{provider.Id}/api-key");
+        var unconfigured = (await client.GetFromJsonAsync<AiProviderResponse[]>("/api/settings/ai/providers"))!.Single();
+
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, saved.StatusCode);
+        Assert.True(configured.HasStoredApiKey);
+        Assert.DoesNotContain(apiKey, responseJson, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.NoContent, cleared.StatusCode);
+        Assert.False(unconfigured.HasStoredApiKey);
     }
 
     [Fact]

@@ -6,7 +6,13 @@ export const Route = createFileRoute('/_authenticated/settings/ai')({
   validateSearch: z.object({
     executionPage: z.number().int().min(1).optional().catch(1),
     operation: z
-      .enum(['all', 'DocumentAnalysis', 'DocumentClassification'])
+      .enum([
+        'all',
+        'DocumentAnalysis',
+        'DocumentClassification',
+        'DocumentEmbedding',
+        'ConsultationChat',
+      ])
       .optional()
       .catch('all'),
     status: z

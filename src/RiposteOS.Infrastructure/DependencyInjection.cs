@@ -7,6 +7,7 @@ using Hangfire.PostgreSql;
 using Gridify;
 using Cronos;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,6 +50,12 @@ public static class DependencyInjection
             .AddRoles<IdentityRole<Guid>>()
             .AddEntityFrameworkStores<RiposteDbContext>();
         services.AddSingleton(TimeProvider.System);
+        var dataProtection = services.AddDataProtection().SetApplicationName("RiposteOS");
+        var dataProtectionKeyPath = configuration["AiSecrets:DataProtectionKeyPath"];
+        if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
+        {
+            dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath));
+        }
         services.AddOptions<ObjectStorageOptions>()
             .Bind(configuration.GetSection(ObjectStorageOptions.SectionName))
             .Validate(options => !string.IsNullOrWhiteSpace(options.BucketName) && options.BucketName.Length <= 63, "ObjectStorage:BucketName is required and must not exceed 63 characters.")
@@ -107,6 +114,8 @@ public static class DependencyInjection
         services.AddScoped<ConsultationAssistantRun>();
         services.AddScoped<ConsultationAssistantFacade>();
         services.AddScoped<AiFacade>();
+        services.AddSingleton<AiProviderSecretProtector>();
+        services.AddSingleton<AiProviderApiKeyResolver>();
         services.AddScoped<IAiChatClientFactory, OpenAiCompatibleChatClientFactory>();
         services.AddScoped<IAiEmbeddingGeneratorFactory, OpenAiCompatibleEmbeddingGeneratorFactory>();
         services.AddHttpClient<IAiProviderHealthChecker, OpenAiCompatibleProviderHealthChecker>(client =>

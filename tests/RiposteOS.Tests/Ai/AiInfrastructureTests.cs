@@ -11,6 +11,7 @@ using RiposteOS.Infrastructure.Ai.Providers;
 using RiposteOS.Infrastructure.Ai.Runtime;
 using RiposteOS.Infrastructure.Ai.Tasks;
 using RiposteOS.Infrastructure.Persistence;
+using RiposteOS.Tests.TestSupport;
 
 namespace RiposteOS.Tests.Ai;
 
@@ -67,7 +68,7 @@ public sealed class AiInfrastructureTests
     public async Task AssignmentRequiresTheProviderCapabilityForTheTask()
     {
         await using var dbContext = CreateDbContext();
-        var facade = new AiFacade(dbContext, new FixedHealthChecker(AiProviderHealthStatus.Available), new FixedTimeProvider(Now));
+        var facade = new AiFacade(dbContext, new FixedHealthChecker(AiProviderHealthStatus.Available), TestAiSecrets.CreateProtector(), new FixedTimeProvider(Now));
         var chat = await facade.CreateProviderAsync("Chat", AiProviderProtocol.OpenAiCompatible, "https://chat.example.test/v1", "gpt", null, true, AiProviderCapabilities.Chat | AiProviderCapabilities.ToolCalling, CancellationToken.None);
         var embedding = await facade.CreateProviderAsync("Embedding", AiProviderProtocol.OpenAiCompatible, "https://embedding.example.test/v1", "qwen", null, true, AiProviderCapabilities.Embedding, CancellationToken.None);
 
@@ -98,7 +99,7 @@ public sealed class AiInfrastructureTests
     public async Task FacadeCreatesUpdatesAssignsAndRefusesUnsafeDeletion()
     {
         await using var dbContext = CreateDbContext();
-        var facade = new AiFacade(dbContext, new FixedHealthChecker(AiProviderHealthStatus.Available), new FixedTimeProvider(Now));
+        var facade = new AiFacade(dbContext, new FixedHealthChecker(AiProviderHealthStatus.Available), TestAiSecrets.CreateProtector(), new FixedTimeProvider(Now));
 
         var provider = await facade.CreateProviderAsync(" Local ", AiProviderProtocol.OpenAiCompatible, "http://localhost:11434/v1", " model ", null, true, CancellationToken.None);
         var assigned = await facade.AssignAsync(AiTask.DocumentClassification, provider.Id, CancellationToken.None);
@@ -122,7 +123,7 @@ public sealed class AiInfrastructureTests
     public async Task FacadeProviderTestDistinguishesMissingAndFailedProviders()
     {
         await using var dbContext = CreateDbContext();
-        var facade = new AiFacade(dbContext, new FixedHealthChecker(AiProviderHealthStatus.Unavailable), new FixedTimeProvider(Now));
+        var facade = new AiFacade(dbContext, new FixedHealthChecker(AiProviderHealthStatus.Unavailable), TestAiSecrets.CreateProtector(), new FixedTimeProvider(Now));
         var provider = await facade.CreateProviderAsync("Local", AiProviderProtocol.OpenAiCompatible, "http://localhost:11434/v1", "model", null, true, CancellationToken.None);
 
         Assert.Null(await facade.TestProviderAsync(Guid.NewGuid(), CancellationToken.None));
@@ -135,7 +136,7 @@ public sealed class AiInfrastructureTests
     public async Task FacadeReassignsAnExistingTask()
     {
         await using var dbContext = CreateDbContext();
-        var facade = new AiFacade(dbContext, new FixedHealthChecker(AiProviderHealthStatus.Available), new FixedTimeProvider(Now));
+        var facade = new AiFacade(dbContext, new FixedHealthChecker(AiProviderHealthStatus.Available), TestAiSecrets.CreateProtector(), new FixedTimeProvider(Now));
         var first = await facade.CreateProviderAsync("First", AiProviderProtocol.OpenAiCompatible, "https://first.example.test", "model", null, true, CancellationToken.None);
         var second = await facade.CreateProviderAsync("Second", AiProviderProtocol.OpenAiCompatible, "https://second.example.test", "model", null, true, CancellationToken.None);
 
@@ -149,7 +150,7 @@ public sealed class AiInfrastructureTests
     public async Task ExecutionJournalSupportsEmptyPayloadsAndRejectsInvalidQueries()
     {
         await using var dbContext = CreateDbContext();
-        var facade = new AiFacade(dbContext, new FixedHealthChecker(AiProviderHealthStatus.Available), new FixedTimeProvider(Now));
+        var facade = new AiFacade(dbContext, new FixedHealthChecker(AiProviderHealthStatus.Available), TestAiSecrets.CreateProtector(), new FixedTimeProvider(Now));
         var execution = new AiExecutionLog(
             AiExecutionOperation.DocumentClassification,
             new AiExecutionSubject(AiExecutionSubjectKind.Document, Guid.NewGuid(), "ccap.docx"),
@@ -278,21 +279,36 @@ public sealed class AiInfrastructureTests
     }
 
     [Fact]
-    public void OpenAiCompatibleFactoryRejectsUnsupportedProtocolAndMissingConfiguredSecret()
+    public void OpenAiCompatibleFactoryUsesChatCompletionsRegardlessOfReasoningCapability()
     {
-        var factory = new OpenAiCompatibleChatClientFactory();
+        var factory = new OpenAiCompatibleChatClientFactory(TestAiSecrets.CreateResolver());
         var provider = Provider(isEnabled: true, apiKeyEnvironmentVariableName: "RIPOSTEOS_TEST_MISSING_KEY");
 
         Assert.Throws<InvalidOperationException>(() => factory.Create(provider));
         Assert.Throws<NotSupportedException>(() => factory.Create(new AiProvider(Guid.NewGuid(), "name", (AiProviderProtocol)99, "https://example.test", "model", null, true, Now, Now)));
         Assert.NotNull(factory.Create(Provider(isEnabled: true)));
-        Assert.NotNull(factory.Create(Provider(isEnabled: true, capabilities: AiProviderCapabilities.Chat | AiProviderCapabilities.Reasoning)));
+        using var reasoningClient = factory.Create(Provider(isEnabled: true, capabilities: AiProviderCapabilities.Chat | AiProviderCapabilities.Reasoning));
+        Assert.NotNull(reasoningClient.GetService(typeof(OpenAI.Chat.ChatClient)));
+    }
+
+    [Fact]
+    public void StoredProviderApiKeyIsEncryptedAndResolvedForClients()
+    {
+        const string apiKey = "sk-test-secret";
+        var protector = TestAiSecrets.CreateProtector();
+        var provider = Provider(isEnabled: true);
+        provider.SetEncryptedApiKey(protector.Protect(apiKey), Now);
+        var resolver = new AiProviderApiKeyResolver(protector);
+
+        Assert.NotEqual(apiKey, provider.EncryptedApiKey);
+        Assert.Equal(apiKey, resolver.Resolve(provider));
+        Assert.NotNull(new OpenAiCompatibleChatClientFactory(resolver).Create(provider));
     }
 
     [Fact]
     public void ChatPipelineBuildsOfficialDecoratorsAndValidatesIterationLimit()
     {
-        using var client = new OpenAiCompatibleChatClientFactory().Create(Provider(isEnabled: true));
+        using var client = new OpenAiCompatibleChatClientFactory(TestAiSecrets.CreateResolver()).Create(Provider(isEnabled: true));
         var pipeline = new AiChatClientPipeline(NullLoggerFactory.Instance);
 
         Assert.Throws<ArgumentOutOfRangeException>(() => pipeline.CreateForTools(client, 0));
@@ -304,7 +320,7 @@ public sealed class AiInfrastructureTests
     [Fact]
     public void OpenAiCompatibleEmbeddingFactoryRejectsUnsupportedProtocolAndMissingConfiguredSecret()
     {
-        var factory = new OpenAiCompatibleEmbeddingGeneratorFactory();
+        var factory = new OpenAiCompatibleEmbeddingGeneratorFactory(TestAiSecrets.CreateResolver());
         var provider = Provider(isEnabled: true, apiKeyEnvironmentVariableName: "RIPOSTEOS_TEST_MISSING_KEY");
 
         Assert.Throws<InvalidOperationException>(() => factory.Create(provider));
@@ -321,7 +337,7 @@ public sealed class AiInfrastructureTests
         dbContext.AddRange(enabled, disabled);
         await dbContext.SaveChangesAsync();
         var checker = new FixedHealthChecker(AiProviderHealthStatus.Available);
-        var facade = new AiFacade(dbContext, checker, new FixedTimeProvider(Now));
+        var facade = new AiFacade(dbContext, checker, TestAiSecrets.CreateProtector(), new FixedTimeProvider(Now));
 
         await new AiProviderHealthCheckJob(facade).ExecuteAsync(CancellationToken.None);
 
@@ -338,7 +354,7 @@ public sealed class AiInfrastructureTests
         var provider = Provider(isEnabled: true);
         dbContext.Add(provider);
         await dbContext.SaveChangesAsync();
-        var facade = new AiFacade(dbContext, new ThrowingHealthChecker(), new FixedTimeProvider(Now));
+        var facade = new AiFacade(dbContext, new ThrowingHealthChecker(), TestAiSecrets.CreateProtector(), new FixedTimeProvider(Now));
 
         await facade.RefreshEnabledProviderHealthAsync(CancellationToken.None);
 

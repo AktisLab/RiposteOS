@@ -10,6 +10,7 @@ namespace RiposteOS.Infrastructure.Ai;
 public sealed class AiFacade(
     RiposteDbContext dbContext,
     IAiProviderHealthChecker healthChecker,
+    AiProviderSecretProtector secretProtector,
     TimeProvider timeProvider)
 {
     private static readonly AiExecutionLogGridifyMapper ExecutionLogMapper = new();
@@ -22,6 +23,32 @@ public sealed class AiFacade(
     public async Task<bool> DeleteProviderAsync(Guid id, CancellationToken ct) { if (await dbContext.Set<AiTaskAssignment>().AnyAsync(x => x.ProviderId == id, ct) || await dbContext.Set<ConsultationDocumentClassification>().AnyAsync(x => x.ProviderId == id, ct)) return false; var p = await dbContext.Set<AiProvider>().SingleOrDefaultAsync(x => x.Id == id, ct); if (p is null) return false; dbContext.Remove(p); await dbContext.SaveChangesAsync(ct); return true; }
     public async Task<bool> AssignAsync(AiTask task, Guid providerId, CancellationToken ct) { var provider = await dbContext.Set<AiProvider>().SingleOrDefaultAsync(x => x.Id == providerId && x.IsEnabled, ct); var required = AiTaskCapabilities.RequiredBy(task); if (provider is null || (provider.Capabilities & required) != required) return false; var assignment = await dbContext.Set<AiTaskAssignment>().SingleOrDefaultAsync(x => x.Task == task, ct); if (assignment is null) dbContext.Set<AiTaskAssignment>().Add(new AiTaskAssignment(task, providerId, timeProvider.GetUtcNow())); else assignment.Assign(providerId, timeProvider.GetUtcNow()); await dbContext.SaveChangesAsync(ct); return true; }
     public Task<AiTaskAssignment?> GetAssignmentAsync(AiTask task, CancellationToken ct) => dbContext.Set<AiTaskAssignment>().AsNoTracking().SingleOrDefaultAsync(x => x.Task == task, ct);
+
+    public async Task<bool> SetProviderApiKeyAsync(Guid id, string apiKey, CancellationToken ct)
+    {
+        var provider = await dbContext.Set<AiProvider>().SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (provider is null)
+        {
+            return false;
+        }
+
+        provider.SetEncryptedApiKey(secretProtector.Protect(apiKey), timeProvider.GetUtcNow());
+        await dbContext.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<bool> ClearProviderApiKeyAsync(Guid id, CancellationToken ct)
+    {
+        var provider = await dbContext.Set<AiProvider>().SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (provider is null)
+        {
+            return false;
+        }
+
+        provider.ClearStoredApiKey(timeProvider.GetUtcNow());
+        await dbContext.SaveChangesAsync(ct);
+        return true;
+    }
 
     public async Task<AiExecutionLogPageResult> ListExecutionLogsAsync(
         int page,

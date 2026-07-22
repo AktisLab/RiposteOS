@@ -14,6 +14,7 @@ const provider = (healthStatus: HealthStatus) => ({
   baseUrl: 'http://localhost:11434/v1/',
   model: 'gpt-oss:20b',
   apiKeyEnvironmentVariableName: null,
+  hasStoredApiKey: false,
   isEnabled: true,
   healthStatus,
   healthCheckedAt: null,

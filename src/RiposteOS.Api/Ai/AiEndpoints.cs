@@ -28,6 +28,20 @@ public static class AiEndpoints
             catch (ArgumentException) { return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["provider"] = ["La configuration IA est invalide."] }); }
         });
         group.MapDelete("/providers/{id:guid}", async Task<IResult> (Guid id, AiFacade facade, CancellationToken ct) => await facade.DeleteProviderAsync(id, ct) ? TypedResults.NoContent() : TypedResults.Conflict());
+        group.MapPut("/providers/{id:guid}/api-key", async Task<IResult> (Guid id, AiProviderApiKeyRequest request, AiFacade facade, CancellationToken ct) =>
+        {
+            try
+            {
+                return await facade.SetProviderApiKeyAsync(id, request.ApiKey, ct)
+                    ? TypedResults.NoContent()
+                    : TypedResults.NotFound();
+            }
+            catch (ArgumentException)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["apiKey"] = ["La clé API est invalide."] });
+            }
+        });
+        group.MapDelete("/providers/{id:guid}/api-key", async Task<IResult> (Guid id, AiFacade facade, CancellationToken ct) => await facade.ClearProviderApiKeyAsync(id, ct) ? TypedResults.NoContent() : TypedResults.NotFound());
         group.MapPost("/providers/{id:guid}/test", async Task<IResult> (Guid id, AiFacade facade, CancellationToken ct) =>
         {
             var success = await facade.TestProviderAsync(id, ct);
@@ -102,9 +116,10 @@ public static class AiEndpoints
     }
 
     private static bool TryParse(AiProviderRequest request, out AiProviderProtocol protocol) => Enum.TryParse(request.Protocol, true, out protocol) && Enum.IsDefined(protocol) && request.Capabilities is not AiProviderCapabilities.None && (request.Capabilities & ~(AiProviderCapabilities.Chat | AiProviderCapabilities.Embedding | AiProviderCapabilities.ToolCalling | AiProviderCapabilities.Reasoning)) == 0;
-    private static AiProviderResponse ToResponse(AiProvider provider) => new(provider.Id, provider.Name, provider.Protocol.ToString(), provider.BaseUrl, provider.Model, provider.ApiKeyEnvironmentVariableName, provider.IsEnabled, provider.Capabilities, provider.HealthStatus.ToString(), provider.HealthCheckedAt, provider.CreatedAt, provider.UpdatedAt);
+    private static AiProviderResponse ToResponse(AiProvider provider) => new(provider.Id, provider.Name, provider.Protocol.ToString(), provider.BaseUrl, provider.Model, provider.ApiKeyEnvironmentVariableName, provider.HasStoredApiKey, provider.IsEnabled, provider.Capabilities, provider.HealthStatus.ToString(), provider.HealthCheckedAt, provider.CreatedAt, provider.UpdatedAt);
 }
 public sealed record AiProviderRequest(string Name, string Protocol, string BaseUrl, string Model, string? ApiKeyEnvironmentVariableName, bool IsEnabled, AiProviderCapabilities Capabilities = AiProviderCapabilities.Chat);
-public sealed record AiProviderResponse(Guid Id, string Name, string Protocol, string BaseUrl, string Model, string? ApiKeyEnvironmentVariableName, bool IsEnabled, AiProviderCapabilities Capabilities, string HealthStatus, DateTimeOffset? HealthCheckedAt, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+public sealed record AiProviderResponse(Guid Id, string Name, string Protocol, string BaseUrl, string Model, string? ApiKeyEnvironmentVariableName, bool HasStoredApiKey, bool IsEnabled, AiProviderCapabilities Capabilities, string HealthStatus, DateTimeOffset? HealthCheckedAt, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+public sealed record AiProviderApiKeyRequest(string ApiKey);
 public sealed record AiTaskAssignmentRequest(Guid ProviderId);
 public sealed record AiTaskAssignmentResponse(string Task, Guid ProviderId, DateTimeOffset UpdatedAt);

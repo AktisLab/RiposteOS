@@ -37,6 +37,24 @@ public sealed class AiDomainTests
         Assert.Throws<ArgumentOutOfRangeException>(() => provider.RecordHealthCheck(AiProviderHealthStatus.Unknown, Now));
     }
 
+    [Fact]
+    public void ProviderTracksStoredApiKeyWithoutExposingPlaintextState()
+    {
+        var provider = new AiProvider("Remote", AiProviderProtocol.OpenAiCompatible, "https://example.test/v1", "model", null, true, Now);
+        provider.RecordHealthCheck(AiProviderHealthStatus.Available, Now.AddMinutes(1));
+
+        provider.SetEncryptedApiKey("encrypted-value", Now.AddMinutes(2));
+
+        Assert.True(provider.HasStoredApiKey);
+        Assert.Equal("encrypted-value", provider.EncryptedApiKey);
+        Assert.Equal(AiProviderHealthStatus.Unknown, provider.HealthStatus);
+        Assert.Null(provider.HealthCheckedAt);
+        provider.ClearStoredApiKey(Now.AddMinutes(3));
+        Assert.False(provider.HasStoredApiKey);
+        Assert.Null(provider.EncryptedApiKey);
+        Assert.Throws<ArgumentException>(() => provider.SetEncryptedApiKey(" ", Now));
+    }
+
     [Theory]
     [InlineData("", "https://example.test", "model")]
     [InlineData("provider", "relative", "model")]
